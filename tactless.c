@@ -63,6 +63,44 @@ char *download(CURL *curl, const char *url, size_t *size) {
   return buffer.data;
 }
 
+struct versions {
+  char build_config[33];
+  char cdn_config[33];
+};
+
+int parse_versions(const char *s, struct versions *versions) {
+  s = strstr(s, "\nus|");
+  if (!s) {
+    return 0;
+  }
+  s = s + 4;
+  const char *p = strchr(s, '|');
+  if (!p || p - s != 32) {
+    return 0;
+  }
+  memcpy(versions->build_config, s, 32);
+  versions->build_config[32] = '\0';
+  s = p + 1;
+  p = strchr(s, '|');
+  if (!p || p - s != 32) {
+    return 0;
+  }
+  memcpy(versions->cdn_config, s, 32);
+  versions->cdn_config[32] = '\0';
+  return 1;
+}
+
+int download_versions(CURL *curl, struct versions *versions) {
+  size_t size;
+  char *text = download(curl, "http://us.patch.battle.net:1119/wow/versions", &size);
+  if (!text) {
+    return 0;
+  }
+  int ret = parse_versions(text, versions);
+  free(text);
+  return ret;
+}
+
 tactless *tactless_open() {
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -76,14 +114,12 @@ tactless *tactless_open() {
   }
   fwrite(cdns, cdns_size, 1, stdout);
   free(cdns);
-  size_t versions_size;
-  char *versions = download(curl, "http://us.patch.battle.net:1119/wow/versions", &versions_size);
-  if (!versions) {
+  struct versions versions;
+  if (!download_versions(curl, &versions)) {
     curl_easy_cleanup(curl);
     return NULL;
   }
-  fwrite(versions, versions_size, 1, stdout);
-  free(versions);
+  printf("%s %s\n", versions.build_config, versions.cdn_config);
   tactless *t = malloc(sizeof(*t));
   if (!t) {
     curl_easy_cleanup(curl);
