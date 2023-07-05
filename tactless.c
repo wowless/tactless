@@ -76,6 +76,14 @@ tactless *tactless_open() {
   }
   fwrite(cdns, cdns_size, 1, stdout);
   free(cdns);
+  size_t versions_size;
+  char *versions = download(curl, "http://us.patch.battle.net:1119/wow/versions", &versions_size);
+  if (!versions) {
+    curl_easy_cleanup(curl);
+    return NULL;
+  }
+  fwrite(versions, versions_size, 1, stdout);
+  free(versions);
   tactless *t = malloc(sizeof(*t));
   if (!t) {
     curl_easy_cleanup(curl);
