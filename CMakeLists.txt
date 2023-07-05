@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.0)
+project(ctactless)
+find_package(CURL REQUIRED)
+add_executable(ctactless ctactless.c)
+target_include_directories(ctactless PRIVATE ${CURL_INCLUDE_DIRS})
+target_link_libraries(ctactless ${CURL_LIBRARIES})
