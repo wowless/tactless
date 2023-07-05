@@ -135,6 +135,25 @@ int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
+void mkurl(const struct cdns *cdns, const char *kind, const char *hash, char *url, size_t size) {
+  snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s",
+      cdns->host, cdns->path,
+      hash[0], hash[1], hash[2], hash[3], hash);
+}
+
+int download_config(CURL *curl, const struct cdns *cdns, const char *hash) {
+  char url[256];
+  mkurl(cdns, "config", hash, url, sizeof(url));
+  size_t size;
+  char *text = download(curl, url, &size);
+  if (!text) {
+    return 0;
+  }
+  fwrite(text, size, 1, stdout);
+  free(text);
+  return 1;
+}
+
 struct tactless {
   CURL *curl;
   struct cdns cdns;
@@ -157,6 +176,14 @@ tactless *tactless_open() {
     return NULL;
   }
   if (!download_versions(curl, &t->versions)) {
+    tactless_close(t);
+    return NULL;
+  }
+  if (!download_config(curl, &t->cdns, t->versions.build_config)) {
+    tactless_close(t);
+    return NULL;
+  }
+  if (!download_config(curl, &t->cdns, t->versions.cdn_config)) {
     tactless_close(t);
     return NULL;
   }
