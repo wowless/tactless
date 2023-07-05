@@ -10,27 +10,48 @@ struct tactless {
 struct collect_buffer {
   char *data;
   size_t size;
+  size_t received;
 };
+
+static size_t collect_header_callback(char *data, size_t size, size_t nitems, void *cbarg) {
+  size_t realsize = size * nitems;
+  if (realsize >= 16 && !memcmp(data, "Content-Length: ", 16)) {
+    memcpy(data, data + 16, realsize - 16);
+    data[realsize - 16] = '\0';
+    long length = atol(data);
+    if (length == 0) {
+      return 0;
+    }
+    struct collect_buffer *buffer = cbarg;
+    if (buffer->data) {
+      return 0;
+    }
+    buffer->data = malloc(length);
+    if (!buffer->data) {
+      return 0;
+    }
+    buffer->size = length;
+  }
+  return realsize;
+}
 
 static size_t collect_callback(void *data, size_t size, size_t nmemb, void *cbarg) {
   size_t realsize = size * nmemb;
   struct collect_buffer *buffer = cbarg;
-  char *p = realloc(buffer->data, buffer->size + realsize);
-  if (!p) {
+  if (!buffer->data || buffer->received + realsize > buffer->size) {
     return 0;
   }
-  memcpy(p + buffer->size, data, realsize);
-  buffer->data = p;
-  buffer->size += realsize;
+  memcpy(buffer->data + buffer->received, data, realsize);
+  buffer->received += realsize;
   return realsize;
 }
 
 char *download(CURL *curl, const char *url, size_t *size) {
-  struct collect_buffer buffer = {
-    .data = NULL,
-    .size = 0,
-  };
+  struct collect_buffer buffer;
+  bzero(&buffer, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, collect_header_callback);
+  curl_easy_setopt(curl, CURLOPT_HEADERDATA, &buffer);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, collect_callback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
   CURLcode code = curl_easy_perform(curl);
@@ -38,7 +59,7 @@ char *download(CURL *curl, const char *url, size_t *size) {
     free(buffer.data);
     return NULL;
   }
-  *size = buffer.size;
+  *size = buffer.received;
   return buffer.data;
 }
 
