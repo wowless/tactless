@@ -135,15 +135,18 @@ int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
-void mkurl(const struct cdns *cdns, const char *kind, const char *hash, char *url, size_t size) {
-  snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s",
+int mkurl(const struct cdns *cdns, const char *kind, const char *hash, char *url, size_t size) {
+  size_t ret = snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s",
       cdns->host, cdns->path,
       hash[0], hash[1], hash[2], hash[3], hash);
+  return ret < size;
 }
 
 int download_config(CURL *curl, const struct cdns *cdns, const char *hash) {
   char url[256];
-  mkurl(cdns, "config", hash, url, sizeof(url));
+  if (!mkurl(cdns, "config", hash, url, sizeof(url))) {
+    return 0;
+  }
   size_t size;
   char *text = download(curl, url, &size);
   if (!text) {
