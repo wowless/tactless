@@ -3,10 +3,6 @@
 #include "curl/curl.h"
 #include "tactless.h"
 
-struct tactless {
-  CURL *curl;
-};
-
 struct collect_buffer {
   char *data;
   size_t size;
@@ -63,6 +59,44 @@ char *download(CURL *curl, const char *url, size_t *size) {
   return buffer.data;
 }
 
+struct cdns {
+  char host[128];
+  char path[64];
+};
+
+int parse_cdns(const char *s, struct cdns *cdns) {
+  s = strstr(s, "\nus|");
+  if (!s) {
+    return 0;
+  }
+  s = s + 4;
+  const char *p = strchr(s, '|');
+  if (!p || p - s >= sizeof(cdns->path)) {
+    return 0;
+  }
+  memcpy(cdns->path, s, p - s);
+  cdns->path[p - s] = '\0';
+  s = p + 1;
+  p = strchr(s, ' ');
+  if (!p || p - s >= sizeof(cdns->host)) {
+    return 0;
+  }
+  memcpy(cdns->host, s, p - s);
+  cdns->host[p - s] = '\0';
+  return 1;
+}
+
+int download_cdns(CURL *curl, struct cdns *cdns) {
+  size_t size;
+  char *text = download(curl, "http://us.patch.battle.net:1119/wow/cdns", &size);
+  if (!text) {
+    return 0;
+  }
+  int ret = parse_cdns(text, cdns);
+  free(text);
+  return ret;
+}
+
 struct versions {
   char build_config[33];
   char cdn_config[33];
@@ -101,32 +135,37 @@ int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
+struct tactless {
+  CURL *curl;
+  struct cdns cdns;
+  struct versions versions;
+};
+
 tactless *tactless_open() {
   CURL *curl = curl_easy_init();
   if (!curl) {
     return NULL;
   }
-  size_t cdns_size;
-  char *cdns = download(curl, "http://us.patch.battle.net:1119/wow/cdns", &cdns_size);
-  if (!cdns) {
-    curl_easy_cleanup(curl);
-    return NULL;
-  }
-  fwrite(cdns, cdns_size, 1, stdout);
-  free(cdns);
-  struct versions versions;
-  if (!download_versions(curl, &versions)) {
-    curl_easy_cleanup(curl);
-    return NULL;
-  }
-  printf("%s %s\n", versions.build_config, versions.cdn_config);
   tactless *t = malloc(sizeof(*t));
   if (!t) {
     curl_easy_cleanup(curl);
     return NULL;
   }
   t->curl = curl;
+  if (!download_cdns(curl, &t->cdns)) {
+    tactless_close(t);
+    return NULL;
+  }
+  if (!download_versions(curl, &t->versions)) {
+    tactless_close(t);
+    return NULL;
+  }
   return t;
+}
+
+void tactless_dump(const tactless *t) {
+  printf("%s %s\n", t->cdns.host, t->cdns.path);
+  printf("%s %s\n", t->versions.build_config, t->versions.cdn_config);
 }
 
 void tactless_close(tactless *t) {
