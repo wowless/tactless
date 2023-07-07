@@ -46,7 +46,7 @@ static size_t collect_callback(void *data, size_t size, size_t nmemb,
   return realsize;
 }
 
-char *download(CURL *curl, const char *url, size_t *size) {
+static char *download(CURL *curl, const char *url, size_t *size) {
   struct collect_buffer buffer;
   bzero(&buffer, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -68,7 +68,7 @@ struct cdns {
   char path[64];
 };
 
-int parse_cdns(const char *s, struct cdns *cdns) {
+static int parse_cdns(const char *s, struct cdns *cdns) {
   s = strstr(s, "\nus|");
   if (!s) {
     return 0;
@@ -90,7 +90,7 @@ int parse_cdns(const char *s, struct cdns *cdns) {
   return 1;
 }
 
-int download_cdns(CURL *curl, struct cdns *cdns) {
+static int download_cdns(CURL *curl, struct cdns *cdns) {
   size_t size;
   char *text =
       download(curl, "http://us.patch.battle.net:1119/wow/cdns", &size);
@@ -107,7 +107,7 @@ struct versions {
   char cdn_config[33];
 };
 
-int parse_versions(const char *s, struct versions *versions) {
+static int parse_versions(const char *s, struct versions *versions) {
   s = strstr(s, "\nus|");
   if (!s) {
     return 0;
@@ -129,7 +129,7 @@ int parse_versions(const char *s, struct versions *versions) {
   return 1;
 }
 
-int download_versions(CURL *curl, struct versions *versions) {
+static int download_versions(CURL *curl, struct versions *versions) {
   size_t size;
   char *text =
       download(curl, "http://us.patch.battle.net:1119/wow/versions", &size);
@@ -141,15 +141,16 @@ int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
-int mkurl(const struct cdns *cdns, const char *kind, const char *hash,
-          char *url, size_t size) {
+static int mkurl(const struct cdns *cdns, const char *kind, const char *hash,
+                 char *url, size_t size) {
   size_t ret =
       snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s", cdns->host,
                cdns->path, hash[0], hash[1], hash[2], hash[3], hash);
   return ret < size;
 }
 
-int download_config(CURL *curl, const struct cdns *cdns, const char *hash) {
+static int download_config(CURL *curl, const struct cdns *cdns,
+                           const char *hash) {
   char url[256];
   if (!mkurl(cdns, "config", hash, url, sizeof(url))) {
     return 0;
