@@ -1,9 +1,8 @@
 #include "tactless.h"
 
+#include <curl/curl.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "curl/curl.h"
 
 struct collect_buffer {
   char *data;
