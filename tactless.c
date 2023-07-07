@@ -1,7 +1,9 @@
+#include "tactless.h"
+
 #include <stdlib.h>
 #include <string.h>
+
 #include "curl/curl.h"
-#include "tactless.h"
 
 struct collect_buffer {
   char *data;
@@ -9,7 +11,8 @@ struct collect_buffer {
   size_t received;
 };
 
-static size_t collect_header_callback(char *data, size_t size, size_t nitems, void *cbarg) {
+static size_t collect_header_callback(char *data, size_t size, size_t nitems,
+                                      void *cbarg) {
   size_t realsize = size * nitems;
   if (realsize >= 16 && !memcmp(data, "Content-Length: ", 16)) {
     memcpy(data, data + 16, realsize - 16);
@@ -31,7 +34,8 @@ static size_t collect_header_callback(char *data, size_t size, size_t nitems, vo
   return realsize;
 }
 
-static size_t collect_callback(void *data, size_t size, size_t nmemb, void *cbarg) {
+static size_t collect_callback(void *data, size_t size, size_t nmemb,
+                               void *cbarg) {
   size_t realsize = size * nmemb;
   struct collect_buffer *buffer = cbarg;
   if (!buffer->data || buffer->received + realsize > buffer->size) {
@@ -88,7 +92,8 @@ int parse_cdns(const char *s, struct cdns *cdns) {
 
 int download_cdns(CURL *curl, struct cdns *cdns) {
   size_t size;
-  char *text = download(curl, "http://us.patch.battle.net:1119/wow/cdns", &size);
+  char *text =
+      download(curl, "http://us.patch.battle.net:1119/wow/cdns", &size);
   if (!text) {
     return 0;
   }
@@ -126,7 +131,8 @@ int parse_versions(const char *s, struct versions *versions) {
 
 int download_versions(CURL *curl, struct versions *versions) {
   size_t size;
-  char *text = download(curl, "http://us.patch.battle.net:1119/wow/versions", &size);
+  char *text =
+      download(curl, "http://us.patch.battle.net:1119/wow/versions", &size);
   if (!text) {
     return 0;
   }
@@ -135,10 +141,11 @@ int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
-int mkurl(const struct cdns *cdns, const char *kind, const char *hash, char *url, size_t size) {
-  size_t ret = snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s",
-      cdns->host, cdns->path,
-      hash[0], hash[1], hash[2], hash[3], hash);
+int mkurl(const struct cdns *cdns, const char *kind, const char *hash,
+          char *url, size_t size) {
+  size_t ret =
+      snprintf(url, size, "http://%s/%s/config/%c%c/%c%c/%s", cdns->host,
+               cdns->path, hash[0], hash[1], hash[2], hash[3], hash);
   return ret < size;
 }
 
