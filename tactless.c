@@ -1,6 +1,7 @@
 #include "tactless.h"
 
 #include <curl/curl.h>
+#include <openssl/md5.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -140,22 +141,31 @@ static int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
-static int mkurl(const struct cdns *cdns, const char *kind, const char *hash,
-                 char *url, size_t size) {
-  size_t ret =
-      snprintf(url, size, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host,
-               cdns->path, kind, hash[0], hash[1], hash[2], hash[3], hash);
-  return ret < size;
+static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
+                               const char *kind, const char *hash,
+                               size_t *size) {
+  char url[256];
+  if (snprintf(url, 256, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host, cdns->path,
+               kind, hash[0], hash[1], hash[2], hash[3], hash) >= 256) {
+    return 0;
+  }
+  char *text = download(curl, url, size);
+  if (!text) {
+    return 0;
+  }
+  char digest[MD5_DIGEST_LENGTH];
+  MD5(text, *size, digest);
+  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+    printf("%2x", digest[i]);
+  }
+  putchar('\n');
+  return text;
 }
 
 static int download_config(CURL *curl, const struct cdns *cdns,
                            const char *hash) {
-  char url[256];
-  if (!mkurl(cdns, "config", hash, url, sizeof(url))) {
-    return 0;
-  }
   size_t size;
-  char *text = download(curl, url, &size);
+  char *text = download_from_cdn(curl, cdns, "config", hash, &size);
   if (!text) {
     return 0;
   }
