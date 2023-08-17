@@ -155,10 +155,13 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   }
   char digest[MD5_DIGEST_LENGTH];
   MD5(text, *size, digest);
+  char dighex[MD5_DIGEST_LENGTH * 2];
   for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-    printf("%2x", digest[i]);
+    sprintf(dighex + i * 2, "%02x", digest[i]);
   }
-  putchar('\n');
+  if (memcmp(hash, dighex, sizeof(dighex))) {
+    return 0;
+  }
   return text;
 }
 
