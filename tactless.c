@@ -167,6 +167,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
 }
 
 struct build_config {
+  char root_ckey[33];
   char encoding_ckey[33];
   char encoding_ekey[33];
 };
@@ -183,7 +184,15 @@ static int parse_hash(const char *s, char delim, char *hash) {
 
 static int parse_build_config(const char *s,
                               struct build_config *build_config) {
-  s = strstr(s, "\nencoding = ");
+  s = strstr(s, "\nroot = ");
+  if (!s) {
+    return 0;
+  }
+  s += 8;
+  if (!parse_hash(s, '\n', build_config->root_ckey)) {
+    return 0;
+  }
+  s = strstr(s + 32, "\nencoding = ");
   if (!s) {
     return 0;
   }
@@ -273,10 +282,13 @@ tactless *tactless_open() {
 }
 
 void tactless_dump(const tactless *t) {
-  printf("%s %s\n", t->cdns.host, t->cdns.path);
-  printf("%s %s\n", t->versions.build_config, t->versions.cdn_config);
-  printf("encoding = %s %s\n", t->build_config.encoding_ckey,
-         t->build_config.encoding_ekey);
+  printf("cdns host = %s\n", t->cdns.host);
+  printf("cdns path = %s\n", t->cdns.path);
+  printf("version build config = %s\n", t->versions.build_config);
+  printf("version cdn config = %s\n", t->versions.cdn_config);
+  printf("root ckey = %s\n", t->build_config.root_ckey);
+  printf("encoding ckey = %s\n", t->build_config.encoding_ckey);
+  printf("encoding ekey = %s\n", t->build_config.encoding_ekey);
 }
 
 void tactless_close(tactless *t) {
