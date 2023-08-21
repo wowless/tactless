@@ -166,22 +166,72 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   return text;
 }
 
-static int download_config(CURL *curl, const struct cdns *cdns,
-                           const char *hash) {
+struct build_config {
+  char encoding[33];
+};
+
+static int parse_build_config(const char *s,
+                              struct build_config *build_config) {
+  s = strstr(s, "\nencoding = ");
+  if (!s) {
+    return 0;
+  }
+  s = strchr(s + 12, ' ');
+  if (!s) {
+    return 0;
+  }
+  s++;
+  const char *p = strchr(s, '\n');
+  if (!p || p - s >= sizeof(build_config->encoding)) {
+    return 0;
+  }
+  memcpy(build_config->encoding, s, p - s);
+  build_config->encoding[p - s] = '\0';
+  return 1;
+}
+
+static int download_build_config(CURL *curl, const struct cdns *cdns,
+                                 const char *hash,
+                                 struct build_config *build_config) {
   size_t size;
   char *text = download_from_cdn(curl, cdns, "config", hash, &size);
   if (!text) {
     return 0;
   }
-  fwrite(text, size, 1, stdout);
+  int ret = parse_build_config(text, build_config);
   free(text);
+  return ret;
+}
+
+struct cdn_config {
+  char **archives;
+  int narchives;
+};
+
+static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
+  cdn_config->narchives = 0;
   return 1;
+}
+
+static int download_cdn_config(CURL *curl, const struct cdns *cdns,
+                               const char *hash,
+                               struct cdn_config *cdn_config) {
+  size_t size;
+  char *text = download_from_cdn(curl, cdns, "config", hash, &size);
+  if (!text) {
+    return 0;
+  }
+  int ret = parse_cdn_config(text, cdn_config);
+  free(text);
+  return ret;
 }
 
 struct tactless {
   CURL *curl;
   struct cdns cdns;
   struct versions versions;
+  struct build_config build_config;
+  struct cdn_config cdn_config;
 };
 
 tactless *tactless_open() {
@@ -194,6 +244,7 @@ tactless *tactless_open() {
     curl_easy_cleanup(curl);
     return NULL;
   }
+  t->cdn_config.archives = NULL;
   t->curl = curl;
   if (!download_cdns(curl, &t->cdns)) {
     tactless_close(t);
@@ -203,11 +254,13 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  if (!download_config(curl, &t->cdns, t->versions.build_config)) {
+  if (!download_build_config(curl, &t->cdns, t->versions.build_config,
+                             &t->build_config)) {
     tactless_close(t);
     return NULL;
   }
-  if (!download_config(curl, &t->cdns, t->versions.cdn_config)) {
+  if (!download_cdn_config(curl, &t->cdns, t->versions.cdn_config,
+                           &t->cdn_config)) {
     tactless_close(t);
     return NULL;
   }
@@ -217,9 +270,11 @@ tactless *tactless_open() {
 void tactless_dump(const tactless *t) {
   printf("%s %s\n", t->cdns.host, t->cdns.path);
   printf("%s %s\n", t->versions.build_config, t->versions.cdn_config);
+  printf("%s %d\n", t->build_config.encoding, t->cdn_config.narchives);
 }
 
 void tactless_close(tactless *t) {
+  free(t->cdn_config.archives);
   curl_easy_cleanup(t->curl);
   free(t);
 }
