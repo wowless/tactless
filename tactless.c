@@ -218,12 +218,39 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
 }
 
 struct cdn_config {
-  char **archives;
+  char (*archives)[33];
   int narchives;
 };
 
 static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
-  cdn_config->narchives = 0;
+  s = strstr(s, "\narchives = ");
+  if (!s) {
+    return 0;
+  }
+  s += 12;
+  const char *p = strchr(s, '\n');
+  if (!p) {
+    return 0;
+  }
+  ++p;
+  if ((p - s) % 33 != 0) {
+    return 0;
+  }
+  size_t n = (p - s) / 33;
+  char(*a)[33] = malloc(sizeof(char[33]) * n);
+  for (int i = 0; i < n - 1; ++i) {
+    if (!parse_hash(s, ' ', a[i])) {
+      free(a);
+      return 0;
+    }
+    s += 33;
+  }
+  if (!parse_hash(s, '\n', a[n - 1])) {
+    free(a);
+    return 0;
+  }
+  cdn_config->narchives = n;
+  cdn_config->archives = a;
   return 1;
 }
 
@@ -289,6 +316,12 @@ void tactless_dump(const tactless *t) {
   printf("root ckey = %s\n", t->build_config.root_ckey);
   printf("encoding ckey = %s\n", t->build_config.encoding_ckey);
   printf("encoding ekey = %s\n", t->build_config.encoding_ekey);
+  printf("num archives = %d\n", t->cdn_config.narchives);
+  if (t->cdn_config.narchives > 0) {
+    printf("first archive = %s\n", t->cdn_config.archives[0]);
+    printf("last archive = %s\n",
+           t->cdn_config.archives[t->cdn_config.narchives - 1]);
+  }
 }
 
 void tactless_close(tactless *t) {
