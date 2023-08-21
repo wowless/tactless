@@ -4,6 +4,7 @@
 #include <openssl/md5.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 struct collect_buffer {
   char *data;
@@ -142,15 +143,60 @@ static int download_versions(CURL *curl, struct versions *versions) {
   return ret;
 }
 
+static char *readall(const char *filename, size_t *size) {
+  FILE *f = fopen(filename, "r");
+  if (!f) {
+    return 0;
+  }
+  struct stat stat;
+  if (fstat(fileno(f), &stat) != 0) {
+    fclose(f);
+    return 0;
+  }
+  *size = stat.st_size;
+  char *text = malloc(*size + 1);
+  text[*size] = '\0';
+  if (fread(text, *size, 1, f) != 1) {
+    fclose(f);
+    return 0;
+  }
+  if (fclose(f) != 0) {
+    return 0;
+  }
+  return text;
+}
+
+static int writeall(const char *filename, const char *text, size_t size) {
+  FILE *f = fopen(filename, "w");
+  if (!f) {
+    return 0;
+  }
+  if (fwrite(text, size, 1, f) != 1) {
+    fclose(f);
+    return 0;
+  }
+  if (fclose(f) != 0) {
+    return 0;
+  }
+  return 1;
+}
+
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
                                const char *kind, const char *hash,
                                size_t *size) {
+  char filename[39];
+  sprintf(filename, "cache/%s", hash);
+  char *text = readall(filename, size);
+  if (text) {
+    printf("returned cached %s\n", hash);
+    return text;
+  }
   char url[256];
   if (snprintf(url, 256, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host, cdns->path,
                kind, hash[0], hash[1], hash[2], hash[3], hash) >= 256) {
     return 0;
   }
-  char *text = download(curl, url, size);
+  text = download(curl, url, size);
   if (!text) {
     return 0;
   }
@@ -161,6 +207,9 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     sprintf(dighex + i * 2, "%02x", digest[i]);
   }
   if (memcmp(hash, dighex, sizeof(dighex))) {
+    return 0;
+  }
+  if (!writeall(filename, text, *size)) {
     return 0;
   }
   return text;
