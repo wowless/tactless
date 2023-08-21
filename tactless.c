@@ -167,8 +167,19 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
 }
 
 struct build_config {
-  char encoding[33];
+  char encoding_ckey[33];
+  char encoding_ekey[33];
 };
+
+static int parse_hash(const char *s, char delim, char *hash) {
+  const char *end = strchr(s, delim);
+  if (end - s != 32) {
+    return 0;
+  }
+  memcpy(hash, s, 32);
+  hash[32] = '\0';
+  return 1;
+}
 
 static int parse_build_config(const char *s,
                               struct build_config *build_config) {
@@ -176,18 +187,12 @@ static int parse_build_config(const char *s,
   if (!s) {
     return 0;
   }
-  s = strchr(s + 12, ' ');
-  if (!s) {
+  s += 12;
+  if (!parse_hash(s, ' ', build_config->encoding_ckey)) {
     return 0;
   }
-  s++;
-  const char *p = strchr(s, '\n');
-  if (!p || p - s >= sizeof(build_config->encoding)) {
-    return 0;
-  }
-  memcpy(build_config->encoding, s, p - s);
-  build_config->encoding[p - s] = '\0';
-  return 1;
+  s += 33;
+  return parse_hash(s, '\n', build_config->encoding_ekey);
 }
 
 static int download_build_config(CURL *curl, const struct cdns *cdns,
@@ -270,7 +275,8 @@ tactless *tactless_open() {
 void tactless_dump(const tactless *t) {
   printf("%s %s\n", t->cdns.host, t->cdns.path);
   printf("%s %s\n", t->versions.build_config, t->versions.cdn_config);
-  printf("%s %d\n", t->build_config.encoding, t->cdn_config.narchives);
+  printf("encoding = %s %s\n", t->build_config.encoding_ckey,
+         t->build_config.encoding_ekey);
 }
 
 void tactless_close(tactless *t) {
