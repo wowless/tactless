@@ -25,10 +25,11 @@ static size_t collect_header_callback(char *data, size_t size, size_t nitems,
     if (buffer->data) {
       return 0;
     }
-    buffer->data = malloc(length);
+    buffer->data = malloc(length + 1);
     if (!buffer->data) {
       return 0;
     }
+    buffer->data[length] = '\0';
     buffer->size = length;
   }
   return realsize;
