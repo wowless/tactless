@@ -170,6 +170,8 @@ struct build_config {
   char root_ckey[33];
   char encoding_ckey[33];
   char encoding_ekey[33];
+  char install_ckey[33];
+  char install_ekey[33];
 };
 
 static int parse_hash(const char *s, char delim, char *hash) {
@@ -192,6 +194,18 @@ static int parse_build_config(const char *s,
   if (!parse_hash(s, '\n', build_config->root_ckey)) {
     return 0;
   }
+  s = strstr(s + 32, "\ninstall = ");
+  if (!s) {
+    return 0;
+  }
+  s += 11;
+  if (!parse_hash(s, ' ', build_config->install_ckey)) {
+    return 0;
+  }
+  s += 33;
+  if (!parse_hash(s, '\n', build_config->install_ekey)) {
+    return 0;
+  }
   s = strstr(s + 32, "\nencoding = ");
   if (!s) {
     return 0;
@@ -201,7 +215,10 @@ static int parse_build_config(const char *s,
     return 0;
   }
   s += 33;
-  return parse_hash(s, '\n', build_config->encoding_ekey);
+  if (!parse_hash(s, '\n', build_config->encoding_ekey)) {
+    return 0;
+  }
+  return 1;
 }
 
 static int download_build_config(CURL *curl, const struct cdns *cdns,
@@ -316,6 +333,8 @@ void tactless_dump(const tactless *t) {
   printf("root ckey = %s\n", t->build_config.root_ckey);
   printf("encoding ckey = %s\n", t->build_config.encoding_ckey);
   printf("encoding ekey = %s\n", t->build_config.encoding_ekey);
+  printf("install ckey = %s\n", t->build_config.install_ckey);
+  printf("install ekey = %s\n", t->build_config.install_ekey);
   printf("num archives = %d\n", t->cdn_config.narchives);
   if (t->cdn_config.narchives > 0) {
     printf("first archive = %s\n", t->cdn_config.archives[0]);
