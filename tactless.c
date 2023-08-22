@@ -182,7 +182,7 @@ static int writeall(const char *filename, const char *text, size_t size) {
 }
 
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
-                               const char *kind, const char *hash,
+                               const char *kind, const char *hash, int filetype,
                                size_t *size) {
   char filename[39];
   sprintf(filename, "cache/%s", hash);
@@ -200,15 +200,22 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
-  unsigned char digest[MD5_DIGEST_LENGTH];
-  MD5(text, *size, digest);
-  char dighex[MD5_DIGEST_LENGTH * 2];
-  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-    sprintf(dighex + i * 2, "%02x", digest[i]);
-  }
-  if (memcmp(hash, dighex, sizeof(dighex))) {
-    free(text);
-    return 0;
+  if (filetype == 0) {
+    unsigned char digest[MD5_DIGEST_LENGTH];
+    MD5(text, *size, digest);
+    char dighex[MD5_DIGEST_LENGTH * 2];
+    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+      sprintf(dighex + i * 2, "%02x", digest[i]);
+    }
+    if (memcmp(hash, dighex, sizeof(dighex))) {
+      free(text);
+      return 0;
+    }
+  } else if (filetype == 1) {
+    /* TODO blte hash check */
+  } else {
+    puts("invalid filetype");
+    abort();
   }
   if (!writeall(filename, text, *size)) {
     free(text);
@@ -276,7 +283,7 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
                                  const char *hash,
                                  struct build_config *build_config) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "config", hash, &size);
+  char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -326,7 +333,7 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
                                const char *hash,
                                struct cdn_config *cdn_config) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "config", hash, &size);
+  char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -370,6 +377,22 @@ tactless *tactless_open() {
   }
   if (!download_cdn_config(curl, &t->cdns, t->versions.cdn_config,
                            &t->cdn_config)) {
+    tactless_close(t);
+    return NULL;
+  }
+  char *text;
+  size_t size;
+  text = download_from_cdn(curl, &t->cdns, "data", t->build_config.install_ekey,
+                           1, &size);
+  if (!text) {
+    free(text);
+    tactless_close(t);
+    return NULL;
+  }
+  text = download_from_cdn(curl, &t->cdns, "data",
+                           t->build_config.encoding_ekey, 1, &size);
+  if (!text) {
+    free(text);
     tactless_close(t);
     return NULL;
   }
