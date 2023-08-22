@@ -207,9 +207,11 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     sprintf(dighex + i * 2, "%02x", digest[i]);
   }
   if (memcmp(hash, dighex, sizeof(dighex))) {
+    free(text);
     return 0;
   }
   if (!writeall(filename, text, *size)) {
+    free(text);
     return 0;
   }
   return text;
