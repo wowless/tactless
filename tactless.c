@@ -200,7 +200,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
-  char digest[MD5_DIGEST_LENGTH];
+  unsigned char digest[MD5_DIGEST_LENGTH];
   MD5(text, *size, digest);
   char dighex[MD5_DIGEST_LENGTH * 2];
   for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
