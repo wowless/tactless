@@ -200,8 +200,8 @@ static int hashcheck(const char *s, size_t size, const char *hash) {
   return memcmp(hash, dighex, sizeof(dighex)) == 0;
 }
 
-static char *parse_blte(const char *s, size_t size, const char *ckey,
-                        const char *ekey, size_t *out_size) {
+static char *parse_blte(const char *s, size_t size, const char *ekey,
+                        size_t *out_size) {
   if (size < 8) {
     return 0;
   }
@@ -275,25 +275,21 @@ static char *parse_blte(const char *s, size_t size, const char *ckey,
     data += compressed_size;
     cursor += uncompressed_size;
   }
-  if (!hashcheck(out, *out_size, ckey)) {
-    free(out);
-    return 0;
-  }
-  puts("we did it!");
   return out;
 }
 
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
-                               const char *kind, const char *hash, int filetype,
-                               size_t *size) {
+                               const char *kind, const char *ckey,
+                               const char *ekey, size_t *size) {
   char filename[39];
-  sprintf(filename, "cache/%s", hash);
+  sprintf(filename, "cache/%s", ckey);
   char *text = readall(filename, size);
   if (text) {
-    printf("returned cached %s\n", hash);
+    printf("returned cached %s\n", ckey);
     return text;
   }
   char url[256];
+  const char *hash = ekey ? ekey : ckey;
   if (snprintf(url, 256, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host, cdns->path,
                kind, hash[0], hash[1], hash[2], hash[3], hash) >= 256) {
     return 0;
@@ -302,16 +298,17 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
-  if (filetype == 0) {
-    if (!hashcheck(text, *size, hash)) {
-      free(text);
+  if (ekey) {
+    char *t = parse_blte(text, *size, ekey, size);
+    free(text);
+    if (!t) {
       return 0;
     }
-  } else if (filetype == 1) {
-    /* TODO blte hash check */
-  } else {
-    puts("invalid filetype");
-    abort();
+    text = t;
+  }
+  if (!hashcheck(text, *size, ckey)) {
+    free(text);
+    return 0;
   }
   if (!writeall(filename, text, *size)) {
     free(text);
@@ -478,25 +475,22 @@ tactless *tactless_open() {
   }
   char *text;
   size_t size;
-  text = download_from_cdn(curl, &t->cdns, "data", t->build_config.install_ekey,
-                           1, &size);
+  const struct build_config *b = &t->build_config;
+  text = download_from_cdn(curl, &t->cdns, "data", b->install_ckey,
+                           b->install_ekey, &size);
   if (!text) {
     free(text);
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, t->build_config.install_ckey,
-                  t->build_config.install_ekey, &size));
   free(text);
-  text = download_from_cdn(curl, &t->cdns, "data",
-                           t->build_config.encoding_ekey, 1, &size);
+  text = download_from_cdn(curl, &t->cdns, "data", b->encoding_ckey,
+                           b->encoding_ekey, &size);
   if (!text) {
     free(text);
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, t->build_config.encoding_ckey,
-                  t->build_config.encoding_ekey, &size));
   free(text);
   return t;
 }
