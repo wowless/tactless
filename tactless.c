@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <zlib.h>
 
 struct collect_buffer {
   char *data;
@@ -252,11 +253,20 @@ static char *parse_blte(const char *s, size_t size, const char *ckey,
   for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
+    uLongf zsize = uncompressed_size;
     switch (data[0]) {
       case 'N':
         memcpy(cursor, data + 1, compressed_size - 1);
         break;
       case 'Z':
+        if (uncompress(cursor, &zsize, data + 1, compressed_size - 1) != Z_OK) {
+          free(out);
+          return 0;
+        }
+        if (zsize != uncompressed_size) {
+          free(out);
+          return 0;
+        }
         break;
       default:
         free(out);
@@ -266,10 +276,10 @@ static char *parse_blte(const char *s, size_t size, const char *ckey,
     cursor += uncompressed_size;
   }
   if (!hashcheck(out, *out_size, ckey)) {
-    puts("ckey failure");
     free(out);
     return 0;
   }
+  puts("we did it!");
   return out;
 }
 
