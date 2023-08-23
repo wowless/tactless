@@ -189,7 +189,8 @@ static uint32_t uint32be(const unsigned char *s) {
   return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
 }
 
-static char *parse_blte(const char *s, size_t size, size_t *out_size) {
+static char *parse_blte(const char *s, size_t size, const char *ekey,
+                        size_t *out_size) {
   if (size < 8) {
     return 0;
   }
@@ -205,6 +206,15 @@ static char *parse_blte(const char *s, size_t size, size_t *out_size) {
     return 0;
   }
   if (header_size < 12) {
+    return 0;
+  }
+  unsigned char digest[MD5_DIGEST_LENGTH];
+  MD5(s, header_size, digest);
+  char dighex[MD5_DIGEST_LENGTH * 2];
+  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+    sprintf(dighex + i * 2, "%02x", digest[i]);
+  }
+  if (memcmp(ekey, dighex, sizeof(dighex))) {
     return 0;
   }
   uint8_t flags = s[8];
@@ -464,7 +474,7 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, &size));
+  free(parse_blte(text, size, t->build_config.install_ekey, &size));
   free(text);
   text = download_from_cdn(curl, &t->cdns, "data",
                            t->build_config.encoding_ekey, 1, &size);
@@ -473,7 +483,7 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, &size));
+  free(parse_blte(text, size, t->build_config.encoding_ekey, &size));
   free(text);
   return t;
 }
