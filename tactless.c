@@ -93,10 +93,14 @@ static int parse_cdns(const char *s, struct cdns *cdns) {
   return 1;
 }
 
-static int download_cdns(CURL *curl, struct cdns *cdns) {
+static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
   size_t size;
-  char *text =
-      download(curl, "http://us.patch.battle.net:1119/wow/cdns", &size);
+  char url[128];
+  if (snprintf(url, sizeof(url), "http://us.patch.battle.net:1119/%s/cdns",
+               product) >= sizeof(url)) {
+    return 0;
+  }
+  char *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
@@ -132,10 +136,15 @@ static int parse_versions(const char *s, struct versions *versions) {
   return 1;
 }
 
-static int download_versions(CURL *curl, struct versions *versions) {
+static int download_versions(CURL *curl, const char *product,
+                             struct versions *versions) {
   size_t size;
-  char *text =
-      download(curl, "http://us.patch.battle.net:1119/wow/versions", &size);
+  char url[128];
+  if (snprintf(url, sizeof(url), "http://us.patch.battle.net:1119/%s/versions",
+               product) >= sizeof(url)) {
+    return 0;
+  }
+  char *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
@@ -522,7 +531,7 @@ struct tactless {
   struct encoding encoding;
 };
 
-tactless *tactless_open() {
+tactless *tactless_open(const char *product) {
   CURL *curl = curl_easy_init();
   if (!curl) {
     return NULL;
@@ -535,11 +544,11 @@ tactless *tactless_open() {
   t->cdn_config.archives = NULL;
   t->encoding.backing_store = NULL;
   t->curl = curl;
-  if (!download_cdns(curl, &t->cdns)) {
+  if (!download_cdns(curl, product, &t->cdns)) {
     tactless_close(t);
     return NULL;
   }
-  if (!download_versions(curl, &t->versions)) {
+  if (!download_versions(curl, product, &t->versions)) {
     tactless_close(t);
     return NULL;
   }
