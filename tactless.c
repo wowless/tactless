@@ -109,6 +109,16 @@ static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
   return ret;
 }
 
+static int parse_hash(const char *s, char delim, char *hash) {
+  const char *end = strchr(s, delim);
+  if (end - s != 32) {
+    return 0;
+  }
+  memcpy(hash, s, 32);
+  hash[32] = '\0';
+  return 1;
+}
+
 struct versions {
   char build_config[33];
   char cdn_config[33];
@@ -119,20 +129,12 @@ static int parse_versions(const char *s, struct versions *versions) {
   if (!s) {
     return 0;
   }
-  s = s + 4;
-  const char *p = strchr(s, '|');
-  if (!p || p - s != 32) {
+  if (!parse_hash(s + 4, '|', versions->build_config)) {
     return 0;
   }
-  memcpy(versions->build_config, s, 32);
-  versions->build_config[32] = '\0';
-  s = p + 1;
-  p = strchr(s, '|');
-  if (!p || p - s != 32) {
+  if (!parse_hash(s + 37, '|', versions->cdn_config)) {
     return 0;
   }
-  memcpy(versions->cdn_config, s, 32);
-  versions->cdn_config[32] = '\0';
   return 1;
 }
 
@@ -339,16 +341,6 @@ struct build_config {
   char install_ckey[33];
   char install_ekey[33];
 };
-
-static int parse_hash(const char *s, char delim, char *hash) {
-  const char *end = strchr(s, delim);
-  if (end - s != 32) {
-    return 0;
-  }
-  memcpy(hash, s, 32);
-  hash[32] = '\0';
-  return 1;
-}
 
 static int parse_build_config(const char *s,
                               struct build_config *build_config) {
