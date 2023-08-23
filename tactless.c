@@ -482,8 +482,8 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
     return 0;
   }
   uint32_t espec_block_size = uint32be(s + 18);
-  if (size !=
-      84 + (cekey_page_count + espec_page_count) * 4128 + espec_block_size) {
+  if (size <
+      22 + (cekey_page_count + espec_page_count) * 4128 + espec_block_size) {
     /* wrong size */
     return 0;
   }
