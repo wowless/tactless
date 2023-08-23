@@ -284,7 +284,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
   char filename[39];
   sprintf(filename, "cache/%s", ckey);
   char *text = readall(filename, size);
-  if (text) {
+  if (text && hashcheck(text, *size, ckey)) {
     printf("returned cached %s\n", ckey);
     return text;
   }
