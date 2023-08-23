@@ -197,7 +197,7 @@ static char *parse_blte(const char *s, size_t size, size_t *out_size) {
     return 0;
   }
   uint32_t header_size = uint32be(s + 4);
-  if (size < header_size + 8) {
+  if (size < header_size) {
     return 0;
   }
   /* TODO support header_size == 0 */
@@ -212,11 +212,43 @@ static char *parse_blte(const char *s, size_t size, size_t *out_size) {
   if (flags != 0xf || num_chunks == 0 || num_chunks * 24 + 12 != header_size) {
     return 0;
   }
-  /* TODO remove */
-  char *p = malloc(size);
-  memcpy(p, s, size);
-  *out_size = size;
-  return p;
+  const char *data = s + header_size;
+  const char *end = s + size;
+  *out_size = 0;
+  for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
+    uint32_t compressed_size = uint32be(entry);
+    uint32_t uncompressed_size = uint32be(entry + 4);
+    if (end - data < compressed_size) {
+      return 0;
+    }
+    data += compressed_size;
+    *out_size += uncompressed_size;
+  }
+  if (data != end) {
+    return 0;
+  }
+  char *out = malloc(*out_size);
+  char *cursor = out;
+  data = s + header_size;
+  for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
+    uint32_t compressed_size = uint32be(entry);
+    uint32_t uncompressed_size = uint32be(entry + 4);
+    switch (data[0]) {
+      case 'N':
+        memcpy(cursor, data + 1, compressed_size - 1);
+        break;
+      case 'Z':
+        printf("lol\n");
+        free(out);
+        return 0;
+      default:
+        free(out);
+        return 0;
+    }
+    data += compressed_size;
+    cursor += uncompressed_size;
+  }
+  return out;
 }
 
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
