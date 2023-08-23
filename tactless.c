@@ -181,6 +181,44 @@ static int writeall(const char *filename, const char *text, size_t size) {
   return 1;
 }
 
+static uint32_t uint24be(const unsigned char *s) {
+  return s[2] | s[1] << 8 | s[0] << 16;
+}
+
+static uint32_t uint32be(const unsigned char *s) {
+  return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
+}
+
+static char *parse_blte(const char *s, size_t size, size_t *out_size) {
+  if (size < 8) {
+    return 0;
+  }
+  if (memcmp(s, "BLTE", 4)) {
+    return 0;
+  }
+  uint32_t header_size = uint32be(s + 4);
+  if (size < header_size + 8) {
+    return 0;
+  }
+  /* TODO support header_size == 0 */
+  if (header_size == 0) {
+    return 0;
+  }
+  if (header_size < 12) {
+    return 0;
+  }
+  uint8_t flags = s[8];
+  uint32_t num_chunks = uint24be(s + 9);
+  if (flags != 0xf || num_chunks == 0 || num_chunks * 24 + 12 != header_size) {
+    return 0;
+  }
+  /* TODO remove */
+  char *p = malloc(size);
+  memcpy(p, s, size);
+  *out_size = size;
+  return p;
+}
+
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
                                const char *kind, const char *hash, int filetype,
                                size_t *size) {
@@ -389,6 +427,8 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
+  free(parse_blte(text, size, &size));
+  free(text);
   text = download_from_cdn(curl, &t->cdns, "data",
                            t->build_config.encoding_ekey, 1, &size);
   if (!text) {
@@ -396,6 +436,8 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
+  free(parse_blte(text, size, &size));
+  free(text);
   return t;
 }
 
