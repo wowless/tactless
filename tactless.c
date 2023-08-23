@@ -182,6 +182,8 @@ static int writeall(const char *filename, const char *text, size_t size) {
   return 1;
 }
 
+static uint16_t uint16be(const unsigned char *s) { return s[1] | s[0] << 8; }
+
 static uint32_t uint24be(const unsigned char *s) {
   return s[2] | s[1] << 8 | s[0] << 16;
 }
@@ -198,6 +200,12 @@ static int hashcheck(const char *s, size_t size, const char *hash) {
     sprintf(dighex + i * 2, "%02x", digest[i]);
   }
   return memcmp(hash, dighex, sizeof(dighex)) == 0;
+}
+
+static int md5check(const char *s, size_t size, const char *md5) {
+  unsigned char digest[16];
+  MD5(s, size, digest);
+  return memcmp(digest, md5, 16) == 0;
 }
 
 static char *parse_blte(const char *s, size_t size, const char *ekey,
@@ -236,9 +244,7 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
     if (end - data < compressed_size) {
       return 0;
     }
-    unsigned char digest[16];
-    MD5(data, compressed_size, digest);
-    if (memcmp(digest, entry + 8, 16)) {
+    if (!md5check(data, compressed_size, entry + 8)) {
       return 0;
     }
     data += compressed_size;
@@ -444,13 +450,67 @@ static int download_install(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
+struct encoding {
+  char *backing_store;
+};
+
+static int parse_encoding(char *s, size_t size, struct encoding *e) {
+  if (size < 22) {
+    /* header too small */
+    return 0;
+  }
+  if (s[0] != 'E' || s[1] != 'N') {
+    /* bad signature */
+    return 0;
+  }
+  if (s[2] != 1) {
+    /* bad version */
+    return 0;
+  }
+  if (s[3] != 16 || s[4] != 16) {
+    /* unexpected hash sizes */
+    return 0;
+  }
+  if (uint16be(s + 5) != 4 || uint16be(s + 7) != 4) {
+    /* unexpected page sizes */
+    return 0;
+  }
+  uint32_t cekey_page_count = uint32be(s + 9);
+  uint32_t espec_page_count = uint32be(s + 13);
+  if (s[17] != 0) {
+    /* unexpected unknown byte value */
+    return 0;
+  }
+  uint32_t espec_block_size = uint32be(s + 18);
+  if (size !=
+      84 + (cekey_page_count + espec_page_count) * 4128 + espec_block_size) {
+    /* wrong size */
+    return 0;
+  }
+  const char *index = s + 22 + espec_block_size;
+  const char *data = index + 32 * cekey_page_count;
+  for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
+    if (!md5check(dc, 4096, ic + 16)) {
+      return 0;
+    }
+  }
+  e->backing_store = s;
+  return 1;
+}
+
 static int download_encoding(CURL *curl, const struct cdns *cdns,
-                             const char *ckey, const char *ekey) {
+                             const char *ckey, const char *ekey,
+                             struct encoding *e) {
   size_t size;
   char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
-  int ret = text != NULL;
-  free(text);
-  return ret;
+  if (!text) {
+    return 0;
+  }
+  if (!parse_encoding(text, size, e)) {
+    free(text);
+    return 0;
+  }
+  return 1;
 }
 
 struct tactless {
@@ -459,6 +519,7 @@ struct tactless {
   struct versions versions;
   struct build_config build_config;
   struct cdn_config cdn_config;
+  struct encoding encoding;
 };
 
 tactless *tactless_open() {
@@ -472,6 +533,7 @@ tactless *tactless_open() {
     return NULL;
   }
   t->cdn_config.archives = NULL;
+  t->encoding.backing_store = NULL;
   t->curl = curl;
   if (!download_cdns(curl, &t->cdns)) {
     tactless_close(t);
@@ -496,7 +558,8 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey)) {
+  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey,
+                         &t->encoding)) {
     tactless_close(t);
     return NULL;
   }
@@ -523,6 +586,7 @@ void tactless_dump(const tactless *t) {
 
 void tactless_close(tactless *t) {
   free(t->cdn_config.archives);
+  free(t->encoding.backing_store);
   curl_easy_cleanup(t->curl);
   free(t);
 }
