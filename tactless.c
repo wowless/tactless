@@ -199,8 +199,8 @@ static int hashcheck(const char *s, size_t size, const char *hash) {
   return memcmp(hash, dighex, sizeof(dighex)) == 0;
 }
 
-static char *parse_blte(const char *s, size_t size, const char *ekey,
-                        size_t *out_size) {
+static char *parse_blte(const char *s, size_t size, const char *ckey,
+                        const char *ekey, size_t *out_size) {
   if (size < 8) {
     return 0;
   }
@@ -257,15 +257,18 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
         memcpy(cursor, data + 1, compressed_size - 1);
         break;
       case 'Z':
-        printf("lol\n");
-        free(out);
-        return 0;
+        break;
       default:
         free(out);
         return 0;
     }
     data += compressed_size;
     cursor += uncompressed_size;
+  }
+  if (!hashcheck(out, *out_size, ckey)) {
+    puts("ckey failure");
+    free(out);
+    return 0;
   }
   return out;
 }
@@ -472,7 +475,8 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, t->build_config.install_ekey, &size));
+  free(parse_blte(text, size, t->build_config.install_ckey,
+                  t->build_config.install_ekey, &size));
   free(text);
   text = download_from_cdn(curl, &t->cdns, "data",
                            t->build_config.encoding_ekey, 1, &size);
@@ -481,7 +485,8 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  free(parse_blte(text, size, t->build_config.encoding_ekey, &size));
+  free(parse_blte(text, size, t->build_config.encoding_ckey,
+                  t->build_config.encoding_ekey, &size));
   free(text);
   return t;
 }
