@@ -221,6 +221,11 @@ static char *parse_blte(const char *s, size_t size, size_t *out_size) {
     if (end - data < compressed_size) {
       return 0;
     }
+    unsigned char digest[16];
+    MD5(data, compressed_size, digest);
+    if (memcmp(digest, entry + 8, 16)) {
+      return 0;
+    }
     data += compressed_size;
     *out_size += uncompressed_size;
   }
