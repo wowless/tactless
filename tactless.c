@@ -435,6 +435,24 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
+static int download_install(CURL *curl, const struct cdns *cdns,
+                            const char *ckey, const char *ekey) {
+  size_t size;
+  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  int ret = text != NULL;
+  free(text);
+  return ret;
+}
+
+static int download_encoding(CURL *curl, const struct cdns *cdns,
+                             const char *ckey, const char *ekey) {
+  size_t size;
+  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  int ret = text != NULL;
+  free(text);
+  return ret;
+}
+
 struct tactless {
   CURL *curl;
   struct cdns cdns;
@@ -473,25 +491,15 @@ tactless *tactless_open() {
     tactless_close(t);
     return NULL;
   }
-  char *text;
-  size_t size;
   const struct build_config *b = &t->build_config;
-  text = download_from_cdn(curl, &t->cdns, "data", b->install_ckey,
-                           b->install_ekey, &size);
-  if (!text) {
-    free(text);
+  if (!download_install(curl, &t->cdns, b->install_ckey, b->install_ekey)) {
     tactless_close(t);
     return NULL;
   }
-  free(text);
-  text = download_from_cdn(curl, &t->cdns, "data", b->encoding_ckey,
-                           b->encoding_ekey, &size);
-  if (!text) {
-    free(text);
+  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey)) {
     tactless_close(t);
     return NULL;
   }
-  free(text);
   return t;
 }
 
