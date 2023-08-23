@@ -189,6 +189,16 @@ static uint32_t uint32be(const unsigned char *s) {
   return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
 }
 
+static int hashcheck(const char *s, size_t size, const char *hash) {
+  unsigned char digest[MD5_DIGEST_LENGTH];
+  MD5(s, size, digest);
+  char dighex[MD5_DIGEST_LENGTH * 2];
+  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+    sprintf(dighex + i * 2, "%02x", digest[i]);
+  }
+  return memcmp(hash, dighex, sizeof(dighex)) == 0;
+}
+
 static char *parse_blte(const char *s, size_t size, const char *ekey,
                         size_t *out_size) {
   if (size < 8) {
@@ -208,13 +218,7 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
   if (header_size < 12) {
     return 0;
   }
-  unsigned char digest[MD5_DIGEST_LENGTH];
-  MD5(s, header_size, digest);
-  char dighex[MD5_DIGEST_LENGTH * 2];
-  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-    sprintf(dighex + i * 2, "%02x", digest[i]);
-  }
-  if (memcmp(ekey, dighex, sizeof(dighex))) {
+  if (!hashcheck(s, header_size, ekey)) {
     return 0;
   }
   uint8_t flags = s[8];
@@ -286,13 +290,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     return 0;
   }
   if (filetype == 0) {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    MD5(text, *size, digest);
-    char dighex[MD5_DIGEST_LENGTH * 2];
-    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-      sprintf(dighex + i * 2, "%02x", digest[i]);
-    }
-    if (memcmp(hash, dighex, sizeof(dighex))) {
+    if (!hashcheck(text, *size, hash)) {
       free(text);
       return 0;
     }
