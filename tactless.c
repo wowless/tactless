@@ -557,6 +557,17 @@ static int download_encoding(CURL *curl, const struct cdns *cdns,
   return 1;
 }
 
+static int encoding_cmp(const void *key, const void *mem) {
+  const char *k = key;
+  const char *m = mem;
+  return memcmp(k, m, 16);
+}
+
+static char *ckey2ekey(const struct encoding *e, const char *ckey) {
+  char *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
+  return p ? p + 16 : 0;
+}
+
 struct tactless {
   CURL *curl;
   struct cdns cdns;
@@ -642,6 +653,11 @@ void tactless_dump(const tactless *t) {
     printf("first encoding ckey = %s\n", hex);
     hash2hex(t->encoding.data + 16, hex);
     printf("first encoding ekey = %s\n", hex);
+  }
+  char *root_ekey = ckey2ekey(&t->encoding, t->build_config.root_ckey);
+  if (root_ekey) {
+    hash2hex(root_ekey, hex);
+    printf("root ekey = %s\n", hex);
   }
 }
 
