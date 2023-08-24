@@ -584,7 +584,8 @@ static int parse_root(const char *s, size_t size, struct root *root) {
   }
   uint32_t total_file_count = uint32le(s + 4);
   uint32_t named_file_count = uint32le(s + 8);
-  uint32_t total_records = 0;
+  uint32_t total_files = 0;
+  uint32_t named_files = 0;
   const char *end = s + size;
   s = s + 12;
   while (s != end) {
@@ -600,9 +601,10 @@ static int parse_root(const char *s, size_t size, struct root *root) {
       return 0;
     }
     s += bsz;
-    total_records += num_records;
+    total_files += num_records;
+    named_files += (flags & 0x10000000) ? 0 : num_records;
   }
-  if (total_records != total_file_count) {
+  if (total_files != total_file_count || named_files != named_file_count) {
     return 0;
   }
   root->total_file_count = total_file_count;
