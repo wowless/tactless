@@ -212,6 +212,10 @@ static uint32_t uint32be(const unsigned char *s) {
   return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
 }
 
+static uint32_t uint32le(const unsigned char *s) {
+  return s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
+}
+
 static int md5check(const char *s, size_t size, const char *md5) {
   unsigned char digest[16];
   MD5(s, size, digest);
@@ -565,9 +569,46 @@ static char *ckey2ekey(const struct encoding *e, const char *ckey) {
   return p ? p + 16 : 0;
 }
 
-struct root {};
+struct root {
+  uint32_t total_file_count;
+  uint32_t named_file_count;
+};
 
-static int parse_root(char *s, size_t size, struct root *root) { return 1; }
+static int parse_root(const char *s, size_t size, struct root *root) {
+  if (size < 12) {
+    return 0;
+  }
+  if (memcmp(s, "TSFM", 4)) {
+    /* TODO support legacy root format */
+    return 0;
+  }
+  uint32_t total_file_count = uint32le(s + 4);
+  uint32_t named_file_count = uint32le(s + 8);
+  uint32_t total_records = 0;
+  const char *end = s + size;
+  s = s + 12;
+  while (s != end) {
+    if (end - s < 12) {
+      return 0;
+    }
+    uint32_t num_records = uint32le(s);
+    uint32_t flags = uint32le(s + 4);
+    uint32_t locale = uint32le(s + 8);
+    size_t rsz = 20 + ((flags & 0x10000000) ? 0 : 8);
+    size_t bsz = 12 + rsz * num_records;
+    if (end - s < bsz) {
+      return 0;
+    }
+    s += bsz;
+    total_records += num_records;
+  }
+  if (total_records != total_file_count) {
+    return 0;
+  }
+  root->total_file_count = total_file_count;
+  root->named_file_count = named_file_count;
+  return 1;
+}
 
 static int download_root(CURL *curl, const struct cdns *cdns, const char *ckey,
                          const char *ekey, struct root *root) {
@@ -682,6 +723,8 @@ void tactless_dump(const tactless *t) {
     hash2hex(root_ekey, hex);
     printf("root ekey = %s\n", hex);
   }
+  printf("root total file count = %d\n", t->root.total_file_count);
+  printf("root named file count = %d\n", t->root.named_file_count);
 }
 
 void tactless_close(tactless *t) {
