@@ -574,18 +574,39 @@ struct root {
   uint32_t named_file_count;
 };
 
-static int parse_root(const char *s, size_t size, struct root *root) {
-  if (size < 12) {
-    return 0;
+static int parse_root_legacy(const char *s, size_t size, struct root *root) {
+  const char *end = s + size;
+  uint32_t num_files = 0;
+  while (s != end) {
+    if (end - s < 12) {
+      return 0;
+    }
+    uint32_t num_records = uint32le(s);
+    uint32_t flags = uint32le(s + 4);
+    uint32_t locale = uint32le(s + 8);
+    size_t bsz = 12 + 28 * num_records;
+    if (end - s < bsz) {
+      return 0;
+    }
+    s += bsz;
+    num_files += num_records;
   }
-  if (memcmp(s, "TSFM", 4)) {
-    /* TODO support legacy root format */
+  root->total_file_count = num_files;
+  root->named_file_count = num_files;
+  return 1;
+}
+
+static int parse_root_mfst(const char *s, size_t size, struct root *root) {
+  if (size < 12) {
     return 0;
   }
   const char *end = s + size;
   uint32_t total_file_count = uint32le(s + 4);
   uint32_t named_file_count = uint32le(s + 8);
   if (total_file_count == 24 && named_file_count == 1) {
+    if (size < 24) {
+      return 0;
+    }
     /* Treat this as having the new-style header. */
     total_file_count = uint32le(s + 12);
     named_file_count = uint32le(s + 16);
@@ -617,6 +638,17 @@ static int parse_root(const char *s, size_t size, struct root *root) {
   root->total_file_count = total_file_count;
   root->named_file_count = named_file_count;
   return 1;
+}
+
+static int parse_root(const char *s, size_t size, struct root *root) {
+  if (size < 4) {
+    return 0;
+  }
+  if (memcmp(s, "TSFM", 4)) {
+    return parse_root_legacy(s, size, root);
+  } else {
+    return parse_root_mfst(s, size, root);
+  }
 }
 
 static int download_root(CURL *curl, const struct cdns *cdns, const char *ckey,
