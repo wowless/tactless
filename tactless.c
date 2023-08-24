@@ -531,8 +531,7 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
     const char *ec = dc;
     const char *end = dc + 4096;
     while (ec<end && * ec> 0) {
-      memcpy(ac, ec + 6, 16);
-      memcpy(ac + 16, ec + 22, 16);
+      memcpy(ac, ec + 6, 32);
       ac += 32;
       ec += 22 + 16 * *ec;
     }
