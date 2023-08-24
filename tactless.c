@@ -172,6 +172,10 @@ static char *readall(const char *filename, size_t *size) {
   }
   *size = stat.st_size;
   char *text = malloc(*size + 1);
+  if (!text) {
+    fclose(f);
+    return 0;
+  }
   text[*size] = '\0';
   if (fread(text, *size, 1, f) != 1) {
     fclose(f);
@@ -260,6 +264,9 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
     return 0;
   }
   char *out = malloc(*out_size);
+  if (!out) {
+    return 0;
+  }
   char *cursor = out;
   data = s + header_size;
   for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
@@ -418,6 +425,9 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
   }
   size_t n = (p - s) / 33;
   char(*a)[16] = malloc(sizeof(char[16]) * n);
+  if (!a) {
+    return 0;
+  }
   for (int i = 0; i < n - 1; ++i) {
     if (!parse_hash(s, ' ', a[i])) {
       free(a);
