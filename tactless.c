@@ -550,11 +550,9 @@ static int download_encoding(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
-  if (!parse_encoding(text, size, e)) {
-    free(text);
-    return 0;
-  }
-  return 1;
+  int ret = parse_encoding(text, size, e);
+  free(text);
+  return ret;
 }
 
 static int encoding_cmp(const void *key, const void *mem) {
@@ -568,6 +566,22 @@ static char *ckey2ekey(const struct encoding *e, const char *ckey) {
   return p ? p + 16 : 0;
 }
 
+struct root {};
+
+static int parse_root(char *s, size_t size, struct root *root) { return 1; }
+
+static int download_root(CURL *curl, const struct cdns *cdns, const char *ckey,
+                         const char *ekey, struct root *root) {
+  size_t size;
+  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  if (!text) {
+    return 0;
+  }
+  int ret = parse_root(text, size, root);
+  free(text);
+  return ret;
+}
+
 struct tactless {
   CURL *curl;
   struct cdns cdns;
@@ -575,6 +589,7 @@ struct tactless {
   struct build_config build_config;
   struct cdn_config cdn_config;
   struct encoding encoding;
+  struct root root;
 };
 
 tactless *tactless_open(const char *product) {
@@ -615,6 +630,15 @@ tactless *tactless_open(const char *product) {
   }
   if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey,
                          &t->encoding)) {
+    tactless_close(t);
+    return NULL;
+  }
+  char *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
+  if (!root_ekey) {
+    tactless_close(t);
+    return NULL;
+  }
+  if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
     tactless_close(t);
     return NULL;
   }
