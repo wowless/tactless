@@ -109,19 +109,24 @@ static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
   return ret;
 }
 
-static int parse_hash(const char *s, char delim, char *hash) {
+static int parse_hash(const char *s, char delim, unsigned char *hash) {
   const char *end = strchr(s, delim);
   if (end - s != 32) {
     return 0;
   }
-  memcpy(hash, s, 32);
-  hash[32] = '\0';
+  unsigned int x;
+  for (; s != end; s += 2, ++hash) {
+    if (sscanf(s, "%02x", &x) != 1) {
+      return 0;
+    }
+    *hash = x;
+  }
   return 1;
 }
 
 struct versions {
-  char build_config[33];
-  char cdn_config[33];
+  char build_config[16];
+  char cdn_config[16];
 };
 
 static int parse_versions(const char *s, struct versions *versions) {
@@ -203,16 +208,6 @@ static uint32_t uint32be(const unsigned char *s) {
   return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
 }
 
-static int hashcheck(const char *s, size_t size, const char *hash) {
-  unsigned char digest[MD5_DIGEST_LENGTH];
-  MD5(s, size, digest);
-  char dighex[MD5_DIGEST_LENGTH * 2];
-  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-    sprintf(dighex + i * 2, "%02x", digest[i]);
-  }
-  return memcmp(hash, dighex, sizeof(dighex)) == 0;
-}
-
 static int md5check(const char *s, size_t size, const char *md5) {
   unsigned char digest[16];
   MD5(s, size, digest);
@@ -238,7 +233,7 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
   if (header_size < 12) {
     return 0;
   }
-  if (!hashcheck(s, header_size, ekey)) {
+  if (!md5check(s, header_size, ekey)) {
     return 0;
   }
   uint8_t flags = s[8];
@@ -295,20 +290,30 @@ static char *parse_blte(const char *s, size_t size, const char *ekey,
   return out;
 }
 
+static void hash2hex(const unsigned char *hash, char *hex) {
+  for (const unsigned char *end = hash + 16; hash != end; ++hash, hex += 2) {
+    sprintf(hex, "%02x", *hash);
+  }
+}
+
 static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
                                const char *kind, const char *ckey,
                                const char *ekey, size_t *size) {
+  char hex[33];
+  hash2hex(ckey, hex);
   char filename[39];
-  sprintf(filename, "cache/%s", ckey);
+  sprintf(filename, "cache/%s", hex);
   char *text = readall(filename, size);
-  if (text && hashcheck(text, *size, ckey)) {
-    printf("returned cached %s\n", ckey);
+  if (text && md5check(text, *size, ckey)) {
+    printf("returned cached %s\n", hex);
     return text;
   }
   char url[256];
-  const char *hash = ekey ? ekey : ckey;
+  if (ekey) {
+    hash2hex(ekey, hex);
+  }
   if (snprintf(url, 256, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host, cdns->path,
-               kind, hash[0], hash[1], hash[2], hash[3], hash) >= 256) {
+               kind, hex[0], hex[1], hex[2], hex[3], hex) >= 256) {
     return 0;
   }
   text = download(curl, url, size);
@@ -323,7 +328,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     }
     text = t;
   }
-  if (!hashcheck(text, *size, ckey)) {
+  if (!md5check(text, *size, ckey)) {
     free(text);
     return 0;
   }
@@ -335,11 +340,11 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
 }
 
 struct build_config {
-  char root_ckey[33];
-  char encoding_ckey[33];
-  char encoding_ekey[33];
-  char install_ckey[33];
-  char install_ekey[33];
+  char root_ckey[16];
+  char encoding_ckey[16];
+  char encoding_ekey[16];
+  char install_ckey[16];
+  char install_ekey[16];
 };
 
 static int parse_build_config(const char *s,
@@ -393,7 +398,7 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
 }
 
 struct cdn_config {
-  char (*archives)[33];
+  char (*archives)[16];
   int narchives;
 };
 
@@ -412,7 +417,7 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
     return 0;
   }
   size_t n = (p - s) / 33;
-  char(*a)[33] = malloc(sizeof(char[33]) * n);
+  char(*a)[16] = malloc(sizeof(char[16]) * n);
   for (int i = 0; i < n - 1; ++i) {
     if (!parse_hash(s, ' ', a[i])) {
       free(a);
@@ -568,20 +573,30 @@ tactless *tactless_open(const char *product) {
 }
 
 void tactless_dump(const tactless *t) {
+  char hex[33];
   printf("cdns host = %s\n", t->cdns.host);
   printf("cdns path = %s\n", t->cdns.path);
-  printf("version build config = %s\n", t->versions.build_config);
-  printf("version cdn config = %s\n", t->versions.cdn_config);
-  printf("root ckey = %s\n", t->build_config.root_ckey);
-  printf("encoding ckey = %s\n", t->build_config.encoding_ckey);
-  printf("encoding ekey = %s\n", t->build_config.encoding_ekey);
-  printf("install ckey = %s\n", t->build_config.install_ckey);
-  printf("install ekey = %s\n", t->build_config.install_ekey);
+  hash2hex(t->versions.build_config, hex);
+  printf("version build config = %s\n", hex);
+  hash2hex(t->versions.cdn_config, hex);
+  printf("version cdn config = %s\n", hex);
+  hash2hex(t->build_config.root_ckey, hex);
+  printf("root ckey = %s\n", hex);
+  hash2hex(t->build_config.encoding_ckey, hex);
+  printf("encoding ckey = %s\n", hex);
+  hash2hex(t->build_config.encoding_ekey, hex);
+  printf("encoding ekey = %s\n", hex);
+  hash2hex(t->build_config.install_ckey, hex);
+  printf("install ckey = %s\n", hex);
+  hash2hex(t->build_config.install_ekey, hex);
+  printf("install ekey = %s\n", hex);
   printf("num archives = %d\n", t->cdn_config.narchives);
-  if (t->cdn_config.narchives > 0) {
-    printf("first archive = %s\n", t->cdn_config.archives[0]);
-    printf("last archive = %s\n",
-           t->cdn_config.archives[t->cdn_config.narchives - 1]);
+  const struct cdn_config *c = &t->cdn_config;
+  if (c->narchives > 0) {
+    hash2hex(c->archives[0], hex);
+    printf("first archive = %s\n", hex);
+    hash2hex(c->archives[c->narchives - 1], hex);
+    printf("last archive = %s\n", hex);
   }
 }
 
