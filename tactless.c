@@ -467,7 +467,8 @@ static int download_install(CURL *curl, const struct cdns *cdns,
 }
 
 struct encoding {
-  char *backing_store;
+  char *data;
+  int n;
 };
 
 static int parse_encoding(char *s, size_t size, struct encoding *e) {
@@ -505,12 +506,39 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
   }
   const char *index = s + 22 + espec_block_size;
   const char *data = index + 32 * cekey_page_count;
+  int entries = 0;
   for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
     if (!md5check(dc, 4096, ic + 16)) {
       return 0;
     }
+    const char *ec = dc;
+    const char *end = dc + 4096;
+    while (ec<end && * ec> 0) {
+      int sz = 22 + 16 * *ec;
+      if (ec + sz > end) {
+        return 0;
+      }
+      ++entries;
+      ec += sz;
+    }
   }
-  e->backing_store = s;
+  char *arr = malloc(entries * 32);
+  if (!arr) {
+    return 0;
+  }
+  char *ac = arr;
+  for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
+    const char *ec = dc;
+    const char *end = dc + 4096;
+    while (ec<end && * ec> 0) {
+      memcpy(ac, ec + 6, 16);
+      memcpy(ac + 16, ec + 22, 16);
+      ac += 32;
+      ec += 22 + 16 * *ec;
+    }
+  }
+  e->data = arr;
+  e->n = entries;
   return 1;
 }
 
@@ -549,7 +577,7 @@ tactless *tactless_open(const char *product) {
     return NULL;
   }
   t->cdn_config.archives = NULL;
-  t->encoding.backing_store = NULL;
+  t->encoding.data = NULL;
   t->curl = curl;
   if (!download_cdns(curl, product, &t->cdns)) {
     tactless_close(t);
@@ -608,11 +636,18 @@ void tactless_dump(const tactless *t) {
     hash2hex(c->archives[c->narchives - 1], hex);
     printf("last archive = %s\n", hex);
   }
+  printf("encoding entries = %d\n", t->encoding.n);
+  if (t->encoding.n > 0) {
+    hash2hex(t->encoding.data, hex);
+    printf("first encoding ckey = %s\n", hex);
+    hash2hex(t->encoding.data + 16, hex);
+    printf("first encoding ekey = %s\n", hex);
+  }
 }
 
 void tactless_close(tactless *t) {
   free(t->cdn_config.archives);
-  free(t->encoding.backing_store);
+  free(t->encoding.data);
   curl_easy_cleanup(t->curl);
   free(t);
 }
