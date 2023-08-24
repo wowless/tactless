@@ -582,12 +582,19 @@ static int parse_root(const char *s, size_t size, struct root *root) {
     /* TODO support legacy root format */
     return 0;
   }
+  const char *end = s + size;
   uint32_t total_file_count = uint32le(s + 4);
   uint32_t named_file_count = uint32le(s + 8);
+  if (total_file_count == 24 && named_file_count == 1) {
+    /* Treat this as having the new-style header. */
+    total_file_count = uint32le(s + 12);
+    named_file_count = uint32le(s + 16);
+    s += 24;
+  } else {
+    s += 12;
+  }
   uint32_t total_files = 0;
   uint32_t named_files = 0;
-  const char *end = s + size;
-  s = s + 12;
   while (s != end) {
     if (end - s < 12) {
       return 0;
