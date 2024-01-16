@@ -517,7 +517,7 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
     }
     const char *ec = dc;
     const char *end = dc + 4096;
-    while (ec<end && * ec> 0) {
+    while (ec < end && *ec) {
       int sz = 22 + 16 * *ec;
       if (ec + sz > end) {
         return 0;
@@ -534,7 +534,7 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
   for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
     const char *ec = dc;
     const char *end = dc + 4096;
-    while (ec<end && * ec> 0) {
+    while (ec < end && *ec) {
       memcpy(ac, ec + 6, 32);
       ac += 32;
       ec += 22 + 16 * *ec;
