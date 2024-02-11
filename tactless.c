@@ -51,7 +51,7 @@ static size_t collect_callback(void *data, size_t size, size_t nmemb,
 
 static char *download(CURL *curl, const char *url, size_t *size) {
   struct collect_buffer buffer;
-  bzero(&buffer, sizeof(buffer));
+  memset(&buffer, 0, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, collect_header_callback);
   curl_easy_setopt(curl, CURLOPT_HEADERDATA, &buffer);
