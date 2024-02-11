@@ -8,9 +8,9 @@ add_library(tactless tactless.c tactless.h)
 target_include_directories(
   tactless
   PRIVATE
-    ${CURL_INCLUDE_DIRS}
-    ${OPENSSL_INCLUDE_DIRS}
-    ${ZLIB_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIR}
+    ${OPENSSL_INCLUDE_DIR}
+    ${ZLIB_INCLUDE_DIR}
 )
 target_link_libraries(
   tactless
