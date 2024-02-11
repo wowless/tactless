@@ -6,7 +6,7 @@ on:
     branches:
     - main
 jobs:
-  pre-commit:
+  test:
     strategy:
       matrix:
         os:
@@ -17,3 +17,5 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: pre-commit/action@v2.0.3
+    - run: cmake -B build
+    - run: cmake --build build --verbose
