@@ -8,7 +8,7 @@
 #include <zlib.h>
 
 struct collect_buffer {
-  char *data;
+  unsigned char *data;
   size_t size;
   size_t received;
 };
@@ -49,7 +49,7 @@ static size_t collect_callback(void *data, size_t size, size_t nmemb,
   return realsize;
 }
 
-static char *download(CURL *curl, const char *url, size_t *size) {
+static unsigned char *download(CURL *curl, const char *url, size_t *size) {
   struct collect_buffer buffer;
   memset(&buffer, 0, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -100,11 +100,11 @@ static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
                product) >= sizeof(url)) {
     return 0;
   }
-  char *text = download(curl, url, &size);
+  unsigned char *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_cdns(text, cdns);
+  int ret = parse_cdns((char *)text, cdns);
   free(text);
   return ret;
 }
@@ -151,16 +151,16 @@ static int download_versions(CURL *curl, const char *product,
                product) >= sizeof(url)) {
     return 0;
   }
-  char *text = download(curl, url, &size);
+  unsigned char *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_versions(text, versions);
+  int ret = parse_versions((char *)text, versions);
   free(text);
   return ret;
 }
 
-static char *readall(const char *filename, size_t *size) {
+static unsigned char *readall(const char *filename, size_t *size) {
   FILE *f = fopen(filename, "r");
   if (!f) {
     return 0;
@@ -171,7 +171,7 @@ static char *readall(const char *filename, size_t *size) {
     return 0;
   }
   *size = stat.st_size;
-  char *text = malloc(*size + 1);
+  unsigned char *text = malloc(*size + 1);
   if (!text) {
     fclose(f);
     return 0;
@@ -187,7 +187,8 @@ static char *readall(const char *filename, size_t *size) {
   return text;
 }
 
-static int writeall(const char *filename, const char *text, size_t size) {
+static int writeall(const char *filename, const unsigned char *text,
+                    size_t size) {
   FILE *f = fopen(filename, "w");
   if (!f) {
     return 0;
@@ -216,14 +217,15 @@ static uint32_t uint32le(const unsigned char *s) {
   return s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 }
 
-static int md5check(const char *s, size_t size, const unsigned char *md5) {
+static int md5check(const unsigned char *s, size_t size,
+                    const unsigned char *md5) {
   unsigned char digest[16];
   MD5(s, size, digest);
   return memcmp(digest, md5, 16) == 0;
 }
 
-static char *parse_blte(const char *s, size_t size, const unsigned char *ekey,
-                        size_t *out_size) {
+static unsigned char *parse_blte(const unsigned char *s, size_t size,
+                                 const unsigned char *ekey, size_t *out_size) {
   if (size < 8) {
     return 0;
   }
@@ -249,10 +251,11 @@ static char *parse_blte(const char *s, size_t size, const unsigned char *ekey,
   if (flags != 0xf || num_chunks == 0 || num_chunks * 24 + 12 != header_size) {
     return 0;
   }
-  const char *data = s + header_size;
-  const char *end = s + size;
+  const unsigned char *data = s + header_size;
+  const unsigned char *end = s + size;
   *out_size = 0;
-  for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
+  for (const unsigned char *entry = s + 12; entry != s + header_size;
+       entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
     if (end - data < compressed_size) {
@@ -267,13 +270,14 @@ static char *parse_blte(const char *s, size_t size, const unsigned char *ekey,
   if (data != end) {
     return 0;
   }
-  char *out = malloc(*out_size);
+  unsigned char *out = malloc(*out_size);
   if (!out) {
     return 0;
   }
-  char *cursor = out;
+  unsigned char *cursor = out;
   data = s + header_size;
-  for (const char *entry = s + 12; entry != s + header_size; entry += 24) {
+  for (const unsigned char *entry = s + 12; entry != s + header_size;
+       entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
     uLongf zsize = uncompressed_size;
@@ -307,14 +311,16 @@ static void hash2hex(const unsigned char *hash, char *hex) {
   }
 }
 
-static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
-                               const char *kind, const unsigned char *ckey,
-                               const unsigned char *ekey, size_t *size) {
+static unsigned char *download_from_cdn(CURL *curl, const struct cdns *cdns,
+                                        const char *kind,
+                                        const unsigned char *ckey,
+                                        const unsigned char *ekey,
+                                        size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
   char filename[39];
   sprintf(filename, "cache/%s", hex);
-  char *text = readall(filename, size);
+  unsigned char *text = readall(filename, size);
   if (text && md5check(text, *size, ckey)) {
     printf("returned cached %s\n", hex);
     return text;
@@ -332,7 +338,7 @@ static char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     return 0;
   }
   if (ekey) {
-    char *t = parse_blte(text, *size, ekey, size);
+    unsigned char *t = parse_blte(text, *size, ekey, size);
     free(text);
     if (!t) {
       return 0;
@@ -399,11 +405,11 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
                                  const unsigned char *hash,
                                  struct build_config *build_config) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  unsigned char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_build_config(text, build_config);
+  int ret = parse_build_config((char *)text, build_config);
   free(text);
   return ret;
 }
@@ -452,11 +458,11 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
                                const unsigned char *hash,
                                struct cdn_config *cdn_config) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  unsigned char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_cdn_config(text, cdn_config);
+  int ret = parse_cdn_config((char *)text, cdn_config);
   free(text);
   return ret;
 }
@@ -465,7 +471,8 @@ static int download_install(CURL *curl, const struct cdns *cdns,
                             const unsigned char *ckey,
                             const unsigned char *ekey) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  unsigned char *text =
+      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   int ret = text != NULL;
   free(text);
   return ret;
@@ -476,7 +483,7 @@ struct encoding {
   int n;
 };
 
-static int parse_encoding(char *s, size_t size, struct encoding *e) {
+static int parse_encoding(unsigned char *s, size_t size, struct encoding *e) {
   if (size < 22) {
     /* header too small */
     return 0;
@@ -509,15 +516,16 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
     /* wrong size */
     return 0;
   }
-  const char *index = s + 22 + espec_block_size;
-  const char *data = index + 32 * cekey_page_count;
+  const unsigned char *index = s + 22 + espec_block_size;
+  const unsigned char *data = index + 32 * cekey_page_count;
   int entries = 0;
-  for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
+  for (const unsigned char *ic = index, *dc = data; ic != data;
+       ic += 32, dc += 4096) {
     if (!md5check(dc, 4096, ic + 16)) {
       return 0;
     }
-    const char *ec = dc;
-    const char *end = dc + 4096;
+    const unsigned char *ec = dc;
+    const unsigned char *end = dc + 4096;
     while (ec < end && *ec) {
       int sz = 22 + 16 * *ec;
       if (ec + sz > end) {
@@ -532,9 +540,10 @@ static int parse_encoding(char *s, size_t size, struct encoding *e) {
     return 0;
   }
   unsigned char *ac = arr;
-  for (const char *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
-    const char *ec = dc;
-    const char *end = dc + 4096;
+  for (const unsigned char *ic = index, *dc = data; ic != data;
+       ic += 32, dc += 4096) {
+    const unsigned char *ec = dc;
+    const unsigned char *end = dc + 4096;
     while (ec < end && *ec) {
       memcpy(ac, ec + 6, 32);
       ac += 32;
@@ -550,7 +559,8 @@ static int download_encoding(CURL *curl, const struct cdns *cdns,
                              const unsigned char *ckey,
                              const unsigned char *ekey, struct encoding *e) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  unsigned char *text =
+      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
@@ -576,8 +586,9 @@ struct root {
   uint32_t named_file_count;
 };
 
-static int parse_root_legacy(const char *s, size_t size, struct root *root) {
-  const char *end = s + size;
+static int parse_root_legacy(const unsigned char *s, size_t size,
+                             struct root *root) {
+  const unsigned char *end = s + size;
   uint32_t num_files = 0;
   while (s != end) {
     if (end - s < 12) {
@@ -598,11 +609,12 @@ static int parse_root_legacy(const char *s, size_t size, struct root *root) {
   return 1;
 }
 
-static int parse_root_mfst(const char *s, size_t size, struct root *root) {
+static int parse_root_mfst(const unsigned char *s, size_t size,
+                           struct root *root) {
   if (size < 12) {
     return 0;
   }
-  const char *end = s + size;
+  const unsigned char *end = s + size;
   uint32_t total_file_count = uint32le(s + 4);
   uint32_t named_file_count = uint32le(s + 8);
   if (total_file_count == 24 && named_file_count == 1) {
@@ -642,7 +654,7 @@ static int parse_root_mfst(const char *s, size_t size, struct root *root) {
   return 1;
 }
 
-static int parse_root(const char *s, size_t size, struct root *root) {
+static int parse_root(const unsigned char *s, size_t size, struct root *root) {
   if (size < 4) {
     return 0;
   }
@@ -657,7 +669,8 @@ static int download_root(CURL *curl, const struct cdns *cdns,
                          const unsigned char *ckey, const unsigned char *ekey,
                          struct root *root) {
   size_t size;
-  char *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  unsigned char *text =
+      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
