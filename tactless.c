@@ -7,8 +7,10 @@
 #include <sys/stat.h>
 #include <zlib.h>
 
+typedef unsigned char byte;
+
 struct collect_buffer {
-  unsigned char *data;
+  byte *data;
   size_t size;
   size_t received;
 };
@@ -49,7 +51,7 @@ static size_t collect_callback(void *data, size_t size, size_t nmemb,
   return realsize;
 }
 
-static unsigned char *download(CURL *curl, const char *url, size_t *size) {
+static byte *download(CURL *curl, const char *url, size_t *size) {
   struct collect_buffer buffer;
   memset(&buffer, 0, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -100,7 +102,7 @@ static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
                product) >= sizeof(url)) {
     return 0;
   }
-  unsigned char *text = download(curl, url, &size);
+  byte *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
@@ -109,7 +111,7 @@ static int download_cdns(CURL *curl, const char *product, struct cdns *cdns) {
   return ret;
 }
 
-static int parse_hash(const char *s, char delim, unsigned char *hash) {
+static int parse_hash(const char *s, char delim, byte *hash) {
   const char *end = strchr(s, delim);
   if (end - s != 32) {
     return 0;
@@ -125,8 +127,8 @@ static int parse_hash(const char *s, char delim, unsigned char *hash) {
 }
 
 struct versions {
-  unsigned char build_config[16];
-  unsigned char cdn_config[16];
+  byte build_config[16];
+  byte cdn_config[16];
 };
 
 static int parse_versions(const char *s, struct versions *versions) {
@@ -151,7 +153,7 @@ static int download_versions(CURL *curl, const char *product,
                product) >= sizeof(url)) {
     return 0;
   }
-  unsigned char *text = download(curl, url, &size);
+  byte *text = download(curl, url, &size);
   if (!text) {
     return 0;
   }
@@ -160,7 +162,7 @@ static int download_versions(CURL *curl, const char *product,
   return ret;
 }
 
-static unsigned char *readall(const char *filename, size_t *size) {
+static byte *readall(const char *filename, size_t *size) {
   FILE *f = fopen(filename, "r");
   if (!f) {
     return 0;
@@ -171,7 +173,7 @@ static unsigned char *readall(const char *filename, size_t *size) {
     return 0;
   }
   *size = stat.st_size;
-  unsigned char *text = malloc(*size + 1);
+  byte *text = malloc(*size + 1);
   if (!text) {
     fclose(f);
     return 0;
@@ -187,8 +189,7 @@ static unsigned char *readall(const char *filename, size_t *size) {
   return text;
 }
 
-static int writeall(const char *filename, const unsigned char *text,
-                    size_t size) {
+static int writeall(const char *filename, const byte *text, size_t size) {
   FILE *f = fopen(filename, "w");
   if (!f) {
     return 0;
@@ -203,29 +204,28 @@ static int writeall(const char *filename, const unsigned char *text,
   return 1;
 }
 
-static uint16_t uint16be(const unsigned char *s) { return s[1] | s[0] << 8; }
+static uint16_t uint16be(const byte *s) { return s[1] | s[0] << 8; }
 
-static uint32_t uint24be(const unsigned char *s) {
+static uint32_t uint24be(const byte *s) {
   return s[2] | s[1] << 8 | s[0] << 16;
 }
 
-static uint32_t uint32be(const unsigned char *s) {
+static uint32_t uint32be(const byte *s) {
   return s[3] | s[2] << 8 | s[1] << 16 | s[0] << 24;
 }
 
-static uint32_t uint32le(const unsigned char *s) {
+static uint32_t uint32le(const byte *s) {
   return s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 }
 
-static int md5check(const unsigned char *s, size_t size,
-                    const unsigned char *md5) {
-  unsigned char digest[16];
+static int md5check(const byte *s, size_t size, const byte *md5) {
+  byte digest[16];
   MD5(s, size, digest);
   return memcmp(digest, md5, 16) == 0;
 }
 
-static unsigned char *parse_blte(const unsigned char *s, size_t size,
-                                 const unsigned char *ekey, size_t *out_size) {
+static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
+                        size_t *out_size) {
   if (size < 8) {
     return 0;
   }
@@ -251,11 +251,10 @@ static unsigned char *parse_blte(const unsigned char *s, size_t size,
   if (flags != 0xf || num_chunks == 0 || num_chunks * 24 + 12 != header_size) {
     return 0;
   }
-  const unsigned char *data = s + header_size;
-  const unsigned char *end = s + size;
+  const byte *data = s + header_size;
+  const byte *end = s + size;
   *out_size = 0;
-  for (const unsigned char *entry = s + 12; entry != s + header_size;
-       entry += 24) {
+  for (const byte *entry = s + 12; entry != s + header_size; entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
     if (end - data < compressed_size) {
@@ -270,14 +269,13 @@ static unsigned char *parse_blte(const unsigned char *s, size_t size,
   if (data != end) {
     return 0;
   }
-  unsigned char *out = malloc(*out_size);
+  byte *out = malloc(*out_size);
   if (!out) {
     return 0;
   }
-  unsigned char *cursor = out;
+  byte *cursor = out;
   data = s + header_size;
-  for (const unsigned char *entry = s + 12; entry != s + header_size;
-       entry += 24) {
+  for (const byte *entry = s + 12; entry != s + header_size; entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
     uLongf zsize = uncompressed_size;
@@ -305,22 +303,20 @@ static unsigned char *parse_blte(const unsigned char *s, size_t size,
   return out;
 }
 
-static void hash2hex(const unsigned char *hash, char *hex) {
-  for (const unsigned char *end = hash + 16; hash != end; ++hash, hex += 2) {
+static void hash2hex(const byte *hash, char *hex) {
+  for (const byte *end = hash + 16; hash != end; ++hash, hex += 2) {
     sprintf(hex, "%02x", *hash);
   }
 }
 
-static unsigned char *download_from_cdn(CURL *curl, const struct cdns *cdns,
-                                        const char *kind,
-                                        const unsigned char *ckey,
-                                        const unsigned char *ekey,
-                                        size_t *size) {
+static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
+                               const char *kind, const byte *ckey,
+                               const byte *ekey, size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
   char filename[39];
   sprintf(filename, "cache/%s", hex);
-  unsigned char *text = readall(filename, size);
+  byte *text = readall(filename, size);
   if (text && md5check(text, *size, ckey)) {
     printf("returned cached %s\n", hex);
     return text;
@@ -338,7 +334,7 @@ static unsigned char *download_from_cdn(CURL *curl, const struct cdns *cdns,
     return 0;
   }
   if (ekey) {
-    unsigned char *t = parse_blte(text, *size, ekey, size);
+    byte *t = parse_blte(text, *size, ekey, size);
     free(text);
     if (!t) {
       return 0;
@@ -357,11 +353,11 @@ static unsigned char *download_from_cdn(CURL *curl, const struct cdns *cdns,
 }
 
 struct build_config {
-  unsigned char root_ckey[16];
-  unsigned char encoding_ckey[16];
-  unsigned char encoding_ekey[16];
-  unsigned char install_ckey[16];
-  unsigned char install_ekey[16];
+  byte root_ckey[16];
+  byte encoding_ckey[16];
+  byte encoding_ekey[16];
+  byte install_ckey[16];
+  byte install_ekey[16];
 };
 
 static int parse_build_config(const char *s,
@@ -402,10 +398,10 @@ static int parse_build_config(const char *s,
 }
 
 static int download_build_config(CURL *curl, const struct cdns *cdns,
-                                 const unsigned char *hash,
+                                 const byte *hash,
                                  struct build_config *build_config) {
   size_t size;
-  unsigned char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  byte *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -415,7 +411,7 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
 }
 
 struct cdn_config {
-  unsigned char (*archives)[16];
+  byte (*archives)[16];
   int narchives;
 };
 
@@ -434,7 +430,7 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
     return 0;
   }
   size_t n = (p - s) / 33;
-  unsigned char(*a)[16] = malloc(sizeof(unsigned char[16]) * n);
+  byte(*a)[16] = malloc(sizeof(byte[16]) * n);
   if (!a) {
     return 0;
   }
@@ -455,10 +451,10 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
 }
 
 static int download_cdn_config(CURL *curl, const struct cdns *cdns,
-                               const unsigned char *hash,
+                               const byte *hash,
                                struct cdn_config *cdn_config) {
   size_t size;
-  unsigned char *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  byte *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -468,22 +464,20 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
 }
 
 static int download_install(CURL *curl, const struct cdns *cdns,
-                            const unsigned char *ckey,
-                            const unsigned char *ekey) {
+                            const byte *ckey, const byte *ekey) {
   size_t size;
-  unsigned char *text =
-      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   int ret = text != NULL;
   free(text);
   return ret;
 }
 
 struct encoding {
-  unsigned char *data;
+  byte *data;
   int n;
 };
 
-static int parse_encoding(unsigned char *s, size_t size, struct encoding *e) {
+static int parse_encoding(byte *s, size_t size, struct encoding *e) {
   if (size < 22) {
     /* header too small */
     return 0;
@@ -516,16 +510,15 @@ static int parse_encoding(unsigned char *s, size_t size, struct encoding *e) {
     /* wrong size */
     return 0;
   }
-  const unsigned char *index = s + 22 + espec_block_size;
-  const unsigned char *data = index + 32 * cekey_page_count;
+  const byte *index = s + 22 + espec_block_size;
+  const byte *data = index + 32 * cekey_page_count;
   int entries = 0;
-  for (const unsigned char *ic = index, *dc = data; ic != data;
-       ic += 32, dc += 4096) {
+  for (const byte *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
     if (!md5check(dc, 4096, ic + 16)) {
       return 0;
     }
-    const unsigned char *ec = dc;
-    const unsigned char *end = dc + 4096;
+    const byte *ec = dc;
+    const byte *end = dc + 4096;
     while (ec < end && *ec) {
       int sz = 22 + 16 * *ec;
       if (ec + sz > end) {
@@ -535,15 +528,14 @@ static int parse_encoding(unsigned char *s, size_t size, struct encoding *e) {
       ec += sz;
     }
   }
-  unsigned char *arr = malloc(entries * 32);
+  byte *arr = malloc(entries * 32);
   if (!arr) {
     return 0;
   }
-  unsigned char *ac = arr;
-  for (const unsigned char *ic = index, *dc = data; ic != data;
-       ic += 32, dc += 4096) {
-    const unsigned char *ec = dc;
-    const unsigned char *end = dc + 4096;
+  byte *ac = arr;
+  for (const byte *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
+    const byte *ec = dc;
+    const byte *end = dc + 4096;
     while (ec < end && *ec) {
       memcpy(ac, ec + 6, 32);
       ac += 32;
@@ -556,11 +548,10 @@ static int parse_encoding(unsigned char *s, size_t size, struct encoding *e) {
 }
 
 static int download_encoding(CURL *curl, const struct cdns *cdns,
-                             const unsigned char *ckey,
-                             const unsigned char *ekey, struct encoding *e) {
+                             const byte *ckey, const byte *ekey,
+                             struct encoding *e) {
   size_t size;
-  unsigned char *text =
-      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
@@ -575,9 +566,8 @@ static int encoding_cmp(const void *key, const void *mem) {
   return memcmp(k, m, 16);
 }
 
-static unsigned char *ckey2ekey(const struct encoding *e,
-                                const unsigned char *ckey) {
-  unsigned char *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
+static byte *ckey2ekey(const struct encoding *e, const byte *ckey) {
+  byte *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
   return p ? p + 16 : 0;
 }
 
@@ -586,9 +576,8 @@ struct root {
   uint32_t named_file_count;
 };
 
-static int parse_root_legacy(const unsigned char *s, size_t size,
-                             struct root *root) {
-  const unsigned char *end = s + size;
+static int parse_root_legacy(const byte *s, size_t size, struct root *root) {
+  const byte *end = s + size;
   uint32_t num_files = 0;
   while (s != end) {
     if (end - s < 12) {
@@ -609,12 +598,11 @@ static int parse_root_legacy(const unsigned char *s, size_t size,
   return 1;
 }
 
-static int parse_root_mfst(const unsigned char *s, size_t size,
-                           struct root *root) {
+static int parse_root_mfst(const byte *s, size_t size, struct root *root) {
   if (size < 12) {
     return 0;
   }
-  const unsigned char *end = s + size;
+  const byte *end = s + size;
   uint32_t total_file_count = uint32le(s + 4);
   uint32_t named_file_count = uint32le(s + 8);
   if (total_file_count == 24 && named_file_count == 1) {
@@ -654,7 +642,7 @@ static int parse_root_mfst(const unsigned char *s, size_t size,
   return 1;
 }
 
-static int parse_root(const unsigned char *s, size_t size, struct root *root) {
+static int parse_root(const byte *s, size_t size, struct root *root) {
   if (size < 4) {
     return 0;
   }
@@ -665,12 +653,10 @@ static int parse_root(const unsigned char *s, size_t size, struct root *root) {
   }
 }
 
-static int download_root(CURL *curl, const struct cdns *cdns,
-                         const unsigned char *ckey, const unsigned char *ekey,
-                         struct root *root) {
+static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
+                         const byte *ekey, struct root *root) {
   size_t size;
-  unsigned char *text =
-      download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
@@ -730,7 +716,7 @@ tactless *tactless_open(const char *product) {
     tactless_close(t);
     return NULL;
   }
-  unsigned char *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
+  byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
   if (!root_ekey) {
     tactless_close(t);
     return NULL;
@@ -775,7 +761,7 @@ void tactless_dump(const tactless *t) {
     hash2hex(t->encoding.data + 16, hex);
     printf("first encoding ekey = %s\n", hex);
   }
-  unsigned char *root_ekey = ckey2ekey(&t->encoding, t->build_config.root_ckey);
+  byte *root_ekey = ckey2ekey(&t->encoding, t->build_config.root_ckey);
   if (root_ekey) {
     hash2hex(root_ekey, hex);
     printf("root ekey = %s\n", hex);
