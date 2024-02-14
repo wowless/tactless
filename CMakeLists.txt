@@ -10,7 +10,11 @@ find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
+include(GenerateExportHeader)
+generate_export_header(tactless)
+
 add_library(tactless tactless.c tactless.h)
+target_include_directories(tactless PUBLIC ${PROJECT_BINARY_DIR})
 target_link_libraries(tactless PRIVATE CURL::libcurl OpenSSL::Crypto ZLIB::ZLIB)
 
 add_executable(main main.c)
