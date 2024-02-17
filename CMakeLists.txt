@@ -6,7 +6,7 @@ set(CMAKE_TOOLCHAIN_FILE
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 
-option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+option(BUILD_SHARED_LIBS "build library as shared" OFF)
 
 include(GenerateExportHeader)
 
