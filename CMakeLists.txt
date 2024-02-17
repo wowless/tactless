@@ -6,6 +6,8 @@ set(CMAKE_TOOLCHAIN_FILE
 
 option(BUILD_SHARED_LIBS "build library as shared" OFF)
 
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON) # TODO explicitly export symbols
+
 project(ctactless)
 
 find_package(CURL REQUIRED)
