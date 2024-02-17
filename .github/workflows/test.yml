@@ -17,8 +17,8 @@ jobs:
         - ubuntu-latest
         - windows-latest
         shared:
-        - ON
         - OFF
+        - ON
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/github-script@v6
