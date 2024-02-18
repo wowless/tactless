@@ -1,6 +1,7 @@
 #include "tactless.h"
 
 #include <curl/curl.h>
+#include <event2/event.h>
 #include <openssl/md5.h>
 #include <stdlib.h>
 #include <string.h>
@@ -677,6 +678,7 @@ struct tactless {
 };
 
 tactless *tactless_open(const char *product) {
+  event_base_free(event_base_new()); /* TODO */
   CURL *curl = curl_easy_init();
   if (!curl) {
     return NULL;
