@@ -18,3 +18,7 @@ target_link_libraries(tactless PRIVATE CURL::libcurl OpenSSL::Crypto ZLIB::ZLIB)
 
 add_executable(main main.c)
 target_link_libraries(main tactless)
+
+include(CTest)
+add_executable(tests tests.c)
+add_test(NAME tests COMMAND tests)
