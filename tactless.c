@@ -490,8 +490,6 @@ static int download_archive_index(const struct cdns *cdns,
                                   const struct cdn_config *cdn_config) {
   char url[256];
   char hex[33];
-  char *text;
-  size_t size;
   int n = cdn_config->narchives;
   CURLM *multi = curl_multi_init();
   if (!multi) {
