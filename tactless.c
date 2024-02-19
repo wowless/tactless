@@ -310,6 +310,13 @@ static void hash2hex(const byte *hash, char *hex) {
   }
 }
 
+static int mkurl(char *url, size_t size, const struct cdns *cdns,
+                 const char *kind, const char *hex, const char *suffix) {
+  return snprintf(url, size, "http://%s/%s/%s/%c%c/%c%c/%s%s", cdns->host,
+                  cdns->path, kind, hex[0], hex[1], hex[2], hex[3], hex,
+                  suffix) < 256;
+}
+
 static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
                                const char *kind, const byte *ckey,
                                const byte *ekey, size_t *size) {
@@ -322,12 +329,11 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
     printf("returned cached %s\n", hex);
     return text;
   }
-  char url[256];
   if (ekey) {
     hash2hex(ekey, hex);
   }
-  if (snprintf(url, 256, "http://%s/%s/%s/%c%c/%c%c/%s", cdns->host, cdns->path,
-               kind, hex[0], hex[1], hex[2], hex[3], hex) >= 256) {
+  char url[256];
+  if (!mkurl(url, sizeof(url), cdns, kind, hex, "")) {
     return 0;
   }
   text = download(curl, url, size);
@@ -462,6 +468,74 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
   int ret = parse_cdn_config((char *)text, cdn_config);
   free(text);
   return ret;
+}
+
+struct multi_collect {
+  struct collect_buffer buffer;
+  CURL *curl;
+};
+
+static int multi_cleanup(CURLM *m, struct multi_collect *p, int n) {
+  for (int i = 0; i < n; ++i) {
+    curl_multi_remove_handle(m, p[i].curl);
+    curl_easy_cleanup(p[i].curl);
+  }
+  free(p);
+  curl_multi_cleanup(m);
+  return 0;
+}
+
+static int download_archive_index(const struct cdns *cdns,
+                                  const struct cdn_config *cdn_config) {
+  char url[256];
+  char hex[33];
+  char *text;
+  size_t size;
+  int n = cdn_config->narchives;
+  CURLM *multi = curl_multi_init();
+  if (!multi) {
+    return 0;
+  }
+  struct multi_collect *c = calloc(n, sizeof(*c));
+  if (!c) {
+    curl_multi_cleanup(multi);
+    return 0;
+  }
+  for (int i = 0; i < n; ++i) {
+    hash2hex(cdn_config->archives[i], hex);
+    if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
+      return multi_cleanup(multi, c, n);
+    }
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+      return multi_cleanup(multi, c, n);
+    }
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, collect_header_callback);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &c[i].buffer);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, collect_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &c[i].buffer);
+    curl_multi_add_handle(multi, curl);
+    c[i].curl = curl;
+  }
+  for (int nn = n; nn;) {
+    if (curl_multi_perform(multi, &nn) != CURLM_OK) {
+      return multi_cleanup(multi, c, n);
+    }
+    if (nn && curl_multi_poll(multi, 0, 0, 100, 0) != CURLM_OK) {
+      return multi_cleanup(multi, c, n);
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    int rem;
+    CURLMsg *msg = curl_multi_info_read(multi, &rem);
+    if (msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK ||
+        rem != n - i - 1) {
+      return multi_cleanup(multi, c, n);
+    }
+  }
+  multi_cleanup(multi, c, n);
+  return 1;
 }
 
 static int download_install(CURL *curl, const struct cdns *cdns,
@@ -723,6 +797,10 @@ tactless *tactless_open(const char *product) {
     return NULL;
   }
   if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
+    tactless_close(t);
+    return NULL;
+  }
+  if (!download_archive_index(&t->cdns, &t->cdn_config)) {
     tactless_close(t);
     return NULL;
   }
