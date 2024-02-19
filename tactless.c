@@ -479,6 +479,7 @@ static int multi_cleanup(CURLM *m, struct multi_collect *p, int n) {
   for (int i = 0; i < n; ++i) {
     curl_multi_remove_handle(m, p[i].curl);
     curl_easy_cleanup(p[i].curl);
+    free(p[i].buffer.data);
   }
   free(p);
   curl_multi_cleanup(m);
