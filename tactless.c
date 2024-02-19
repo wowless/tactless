@@ -496,6 +496,7 @@ static int download_archive_index(const struct cdns *cdns,
   if (!multi) {
     return 0;
   }
+  curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   struct multi_collect *c = calloc(n, sizeof(*c));
   if (!c) {
     curl_multi_cleanup(multi);
