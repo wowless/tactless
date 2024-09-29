@@ -533,6 +533,12 @@ static int download_archive_index(const struct cdns *cdns,
         rem != n - i - 1) {
       return multi_cleanup(multi, c, n);
     }
+    char filename[45];
+    hash2hex(cdn_config->archives[i], hex);
+    sprintf(filename, "cache/%s.index", hex);
+    if (!writeall(filename, c[i].buffer.data, c[i].buffer.size)) {
+      return multi_cleanup(multi, c, n);
+    }
   }
   multi_cleanup(multi, c, n);
   return 1;
