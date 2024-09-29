@@ -314,7 +314,7 @@ static int mkurl(char *url, size_t size, const struct cdns *cdns,
                  const char *kind, const char *hex, const char *suffix) {
   return snprintf(url, size, "http://%s/%s/%s/%c%c/%c%c/%s%s", cdns->host,
                   cdns->path, kind, hex[0], hex[1], hex[2], hex[3], hex,
-                  suffix) < 256;
+                  suffix) < size;
 }
 
 static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
@@ -506,6 +506,7 @@ static int download_archive_index(const struct cdns *cdns,
     if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
       return multi_cleanup(multi, c, n);
     }
+    printf("downloading %s\n", url);
     CURL *curl = curl_easy_init();
     if (!curl) {
       return multi_cleanup(multi, c, n);
