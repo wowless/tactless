@@ -754,9 +754,11 @@ struct tactless {
   struct root root;
 };
 
-static int tactless_init(struct tactless *t, CURL *curl, const char *product) {
-  t->cdn_config.archives = NULL;
-  t->encoding.data = NULL;
+static int tactless_init(struct tactless *t, const char *product) {
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    return 0;
+  }
   t->curl = curl;
   if (!download_cdns(curl, product, &t->cdns)) {
     return 0;
@@ -794,16 +796,11 @@ static int tactless_init(struct tactless *t, CURL *curl, const char *product) {
 }
 
 struct tactless *tactless_open(const char *product) {
-  CURL *curl = curl_easy_init();
-  if (!curl) {
-    return NULL;
-  }
-  tactless *t = malloc(sizeof(*t));
+  struct tactless *t = calloc(1, sizeof(*t));
   if (!t) {
-    curl_easy_cleanup(curl);
     return NULL;
   }
-  if (!tactless_init(t, curl, product)) {
+  if (!tactless_init(t, product)) {
     tactless_close(t);
     return NULL;
   }
