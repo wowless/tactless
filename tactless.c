@@ -222,7 +222,7 @@ static uint32_t uint32le(const byte *s) {
 
 static int md5check(const byte *s, size_t size, const byte *md5) {
   byte digest[16];
-  MD5(s, size, digest);
+  MD5(s, size, digest);  // NOLINT(clang-diagnostic-deprecated-declarations)
   return memcmp(digest, md5, 16) == 0;
 }
 
