@@ -2,5 +2,4 @@ Checks:
 - -clang-analyzer-deadcode.DeadStores
 - -clang-analyzer-optin.portability.UnixAPI
 - -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
-- -clang-analyzer-unix.Malloc
 - -clang-diagnostic-deprecated-declarations

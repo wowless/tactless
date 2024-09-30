@@ -180,10 +180,12 @@ static byte *readall(const char *filename, size_t *size) {
   }
   text[*size] = '\0';
   if (fread(text, *size, 1, f) != 1) {
+    free(text);
     fclose(f);
     return 0;
   }
   if (fclose(f) != 0) {
+    free(text);
     return 0;
   }
   return text;
@@ -327,6 +329,7 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
   if (text && md5check(text, *size, ckey)) {
     return text;
   }
+  free(text);
   if (ekey) {
     hash2hex(ekey, hex);
   }
