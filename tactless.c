@@ -645,8 +645,8 @@ static int encoding_cmp(const void *key, const void *mem) {
   return memcmp(k, m, 16);
 }
 
-static byte *ckey2ekey(const struct encoding *e, const byte *ckey) {
-  byte *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
+static const byte *ckey2ekey(const struct encoding *e, const byte *ckey) {
+  const byte *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
   return p ? p + 16 : 0;
 }
 
@@ -795,7 +795,7 @@ tactless *tactless_open(const char *product) {
     tactless_close(t);
     return NULL;
   }
-  byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
+  const byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
   if (!root_ekey) {
     tactless_close(t);
     return NULL;
@@ -844,7 +844,7 @@ void tactless_dump(const tactless *t) {
     hash2hex(t->encoding.data + 16, hex);
     printf("first encoding ekey = %s\n", hex);
   }
-  byte *root_ekey = ckey2ekey(&t->encoding, t->build_config.root_ckey);
+  const byte *root_ekey = ckey2ekey(&t->encoding, t->build_config.root_ckey);
   if (root_ekey) {
     hash2hex(root_ekey, hex);
     printf("root ekey = %s\n", hex);
