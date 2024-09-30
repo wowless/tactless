@@ -52,7 +52,6 @@ static size_t collect_callback(void *data, size_t size, size_t nmemb,
 }
 
 static byte *download(CURL *curl, const char *url, size_t *size) {
-  printf("downloading %s\n", url);
   struct collect_buffer buffer;
   memset(&buffer, 0, sizeof(buffer));
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -326,7 +325,6 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
   sprintf(filename, "cache/%s", hex);
   byte *text = readall(filename, size);
   if (text && md5check(text, *size, ckey)) {
-    printf("returned cached %s\n", hex);
     return text;
   }
   if (ekey) {
@@ -506,7 +504,6 @@ static int download_archive_index(const struct cdns *cdns,
     if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
       return multi_cleanup(multi, c, n);
     }
-    printf("downloading %s\n", url);
     CURL *curl = curl_easy_init();
     if (!curl) {
       return multi_cleanup(multi, c, n);
