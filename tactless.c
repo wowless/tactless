@@ -670,8 +670,6 @@ static int parse_root_legacy(const byte *s, size_t size, struct root *root) {
       return 0;
     }
     uint32_t num_records = uint32le(s);
-    uint32_t flags = uint32le(s + 4);
-    uint32_t locale = uint32le(s + 8);
     size_t bsz = 12 + 28 * num_records;
     if (end - s < bsz) {
       return 0;
@@ -710,7 +708,6 @@ static int parse_root_mfst(const byte *s, size_t size, struct root *root) {
     }
     uint32_t num_records = uint32le(s);
     uint32_t flags = uint32le(s + 4);
-    uint32_t locale = uint32le(s + 8);
     size_t rsz = 20 + ((flags & 0x10000000) ? 0 : 8);
     size_t bsz = 12 + rsz * num_records;
     if (end - s < bsz) {

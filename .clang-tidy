@@ -1,3 +1,2 @@
 Checks:
-- -clang-analyzer-deadcode.DeadStores
 - -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
