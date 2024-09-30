@@ -473,40 +473,21 @@ struct multi_collect {
   CURL *curl;
 };
 
-static int multi_cleanup(CURLM *m, struct multi_collect *p, int n) {
-  for (int i = 0; i < n; ++i) {
-    curl_multi_remove_handle(m, p[i].curl);
-    curl_easy_cleanup(p[i].curl);
-    free(p[i].buffer.data);
-  }
-  free(p);
-  curl_multi_cleanup(m);
-  return 0;
-}
-
-static int download_archive_index(const struct cdns *cdns,
-                                  const struct cdn_config *cdn_config) {
+static int download_archive_index_multi(const struct cdns *cdns,
+                                        const struct cdn_config *cdn_config,
+                                        struct multi_collect *c, CURLM *multi) {
+  int n = cdn_config->narchives;
+  curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   char url[256];
   char hex[33];
-  int n = cdn_config->narchives;
-  CURLM *multi = curl_multi_init();
-  if (!multi) {
-    return 0;
-  }
-  curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
-  struct multi_collect *c = calloc(n, sizeof(*c));
-  if (!c) {
-    curl_multi_cleanup(multi);
-    return 0;
-  }
   for (int i = 0; i < n; ++i) {
     hash2hex(cdn_config->archives[i], hex);
     if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
     CURL *curl = curl_easy_init();
     if (!curl) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, collect_header_callback);
@@ -518,10 +499,10 @@ static int download_archive_index(const struct cdns *cdns,
   }
   for (int nn = n; nn;) {
     if (curl_multi_perform(multi, &nn) != CURLM_OK) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
     if (nn && curl_multi_poll(multi, 0, 0, 100, 0) != CURLM_OK) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
   }
   for (int i = 0; i < n; ++i) {
@@ -529,17 +510,34 @@ static int download_archive_index(const struct cdns *cdns,
     CURLMsg *msg = curl_multi_info_read(multi, &rem);
     if (msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK ||
         rem != n - i - 1) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
     char filename[45];
     hash2hex(cdn_config->archives[i], hex);
     sprintf(filename, "cache/%s.index", hex);
     if (!writeall(filename, c[i].buffer.data, c[i].buffer.size)) {
-      return multi_cleanup(multi, c, n);
+      return 0;
     }
   }
-  multi_cleanup(multi, c, n);
   return 1;
+}
+
+static int download_archive_index(const struct cdns *cdns,
+                                  const struct cdn_config *cdn_config) {
+  int n = cdn_config->narchives;
+  struct multi_collect *c = calloc(n, sizeof(*c));
+  CURLM *m = curl_multi_init();
+  int ret = c && m && download_archive_index_multi(cdns, cdn_config, c, m);
+  if (c) {
+    for (int i = 0; i < n; ++i) {
+      curl_multi_remove_handle(m, c[i].curl);
+      curl_easy_cleanup(c[i].curl);
+      free(c[i].buffer.data);
+    }
+  }
+  free(c);
+  curl_multi_cleanup(m);
+  return ret;
 }
 
 static int download_install(CURL *curl, const struct cdns *cdns,
