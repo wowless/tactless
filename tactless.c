@@ -271,6 +271,9 @@ static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
   if (data != end) {
     return 0;
   }
+  if (!*out_size) {
+    return 0;
+  }
   byte *out = malloc(*out_size);
   if (!out) {
     return 0;
@@ -607,6 +610,9 @@ static int parse_encoding(byte *s, size_t size, struct encoding *e) {
       ++entries;
       ec += sz;
     }
+  }
+  if (!entries) {
+    return 0;
   }
   byte *arr = malloc(entries * 32);
   if (!arr) {
