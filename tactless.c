@@ -754,7 +754,46 @@ struct tactless {
   struct root root;
 };
 
-tactless *tactless_open(const char *product) {
+static int tactless_init(struct tactless *t, CURL *curl, const char *product) {
+  t->cdn_config.archives = NULL;
+  t->encoding.data = NULL;
+  t->curl = curl;
+  if (!download_cdns(curl, product, &t->cdns)) {
+    return 0;
+  }
+  if (!download_versions(curl, product, &t->versions)) {
+    return 0;
+  }
+  if (!download_build_config(curl, &t->cdns, t->versions.build_config,
+                             &t->build_config)) {
+    return 0;
+  }
+  if (!download_cdn_config(curl, &t->cdns, t->versions.cdn_config,
+                           &t->cdn_config)) {
+    return 0;
+  }
+  const struct build_config *b = &t->build_config;
+  if (!download_install(curl, &t->cdns, b->install_ckey, b->install_ekey)) {
+    return 0;
+  }
+  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey,
+                         &t->encoding)) {
+    return 0;
+  }
+  const byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
+  if (!root_ekey) {
+    return 0;
+  }
+  if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
+    return 0;
+  }
+  if (!download_archive_index(&t->cdns, &t->cdn_config)) {
+    return 0;
+  }
+  return 1;
+}
+
+struct tactless *tactless_open(const char *product) {
   CURL *curl = curl_easy_init();
   if (!curl) {
     return NULL;
@@ -764,54 +803,14 @@ tactless *tactless_open(const char *product) {
     curl_easy_cleanup(curl);
     return NULL;
   }
-  t->cdn_config.archives = NULL;
-  t->encoding.data = NULL;
-  t->curl = curl;
-  if (!download_cdns(curl, product, &t->cdns)) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_versions(curl, product, &t->versions)) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_build_config(curl, &t->cdns, t->versions.build_config,
-                             &t->build_config)) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_cdn_config(curl, &t->cdns, t->versions.cdn_config,
-                           &t->cdn_config)) {
-    tactless_close(t);
-    return NULL;
-  }
-  const struct build_config *b = &t->build_config;
-  if (!download_install(curl, &t->cdns, b->install_ckey, b->install_ekey)) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey,
-                         &t->encoding)) {
-    tactless_close(t);
-    return NULL;
-  }
-  const byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
-  if (!root_ekey) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
-    tactless_close(t);
-    return NULL;
-  }
-  if (!download_archive_index(&t->cdns, &t->cdn_config)) {
+  if (!tactless_init(t, curl, product)) {
     tactless_close(t);
     return NULL;
   }
   return t;
 }
 
-void tactless_dump(const tactless *t) {
+void tactless_dump(const struct tactless *t) {
   char hex[33];
   printf("cdns host = %s\n", t->cdns.host);
   printf("cdns path = %s\n", t->cdns.path);
@@ -853,7 +852,7 @@ void tactless_dump(const tactless *t) {
   printf("root named file count = %d\n", t->root.named_file_count);
 }
 
-void tactless_close(tactless *t) {
+void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   free(t->encoding.data);
   curl_easy_cleanup(t->curl);
