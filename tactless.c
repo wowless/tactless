@@ -640,7 +640,7 @@ void tactless_encoding_dump(const struct tactless_encoding *e) {
   for (const byte *p = e->data; p != end; p += 32) {
     hash2hex(p, buf);
     buf[32] = ' ';
-    hash2hex(p + 16, buf);
+    hash2hex(p + 16, buf + 33);
     buf[65] = '\n';
     fwrite(buf, 66, 1, stdout);
   }
