@@ -6,7 +6,6 @@ Checks:
   -bugprone-easily-swappable-parameters,
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-narrowing-conversions,
-  -bugprone-reserved-identifier,
   -bugprone-suspicious-string-compare,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
 
@@ -18,6 +17,5 @@ WarningsAsErrors:
   -bugprone-easily-swappable-parameters,
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-narrowing-conversions,
-  -bugprone-reserved-identifier,
   -bugprone-suspicious-string-compare,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,

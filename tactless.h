@@ -1,5 +1,5 @@
-#ifndef __TACTLESS_H__
-#define __TACTLESS_H__
+#ifndef TACTLESS_H_
+#define TACTLESS_H_
 
 struct tactless;
 typedef struct tactless tactless;
