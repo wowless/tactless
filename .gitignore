@@ -1,3 +1,4 @@
 /build/
 /cache/
 /.build-pre-commit/
+/.vscode/

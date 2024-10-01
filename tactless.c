@@ -162,7 +162,7 @@ static int download_versions(CURL *curl, const char *product,
   return ret;
 }
 
-static byte *readall(const char *filename, size_t *size) {
+byte *tactless_readfile(const char *filename, size_t *size) {
   FILE *f = fopen(filename, "r");
   if (!f) {
     return 0;
@@ -329,7 +329,7 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
   hash2hex(ckey, hex);
   char filename[39];
   sprintf(filename, "cache/%s", hex);
-  byte *text = readall(filename, size);
+  byte *text = tactless_readfile(filename, size);
   if (text && md5check(text, *size, ckey)) {
     return text;
   }
@@ -560,13 +560,9 @@ static int download_install(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
-struct encoding {
-  byte *data;
-  int n;
-};
-
-static int parse_encoding(byte *s, size_t size, struct encoding *e) {
-  if (size < 22) {
+int tactless_encoding_parse(const byte *s, size_t n,
+                            struct tactless_encoding *e) {
+  if (n < 22) {
     /* header too small */
     return 0;
   }
@@ -593,7 +589,7 @@ static int parse_encoding(byte *s, size_t size, struct encoding *e) {
     return 0;
   }
   uint32_t espec_block_size = uint32be(s + 18);
-  if (size <
+  if (n <
       22 + (cekey_page_count + espec_page_count) * 4128 + espec_block_size) {
     /* wrong size */
     return 0;
@@ -638,27 +634,41 @@ static int parse_encoding(byte *s, size_t size, struct encoding *e) {
   return 1;
 }
 
+void tactless_encoding_dump(const struct tactless_encoding *e) {
+  char buf[66];
+  const byte *end = e->data + e->n * (size_t)32;
+  for (const byte *p = e->data; p != end; p += 32) {
+    hash2hex(p, buf);
+    buf[32] = ' ';
+    hash2hex(p + 16, buf);
+    buf[65] = '\n';
+    fwrite(buf, 66, 1, stdout);
+  }
+}
+
+void tactless_encoding_free(struct tactless_encoding *e) { free(e->data); }
+
 static int download_encoding(CURL *curl, const struct cdns *cdns,
                              const byte *ckey, const byte *ekey,
-                             struct encoding *e) {
+                             struct tactless_encoding *e) {
   size_t size;
   byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_encoding(text, size, e);
+  int ret = tactless_encoding_parse(text, size, e);
   free(text);
   return ret;
 }
 
-/* NOLINTNEXTLINE(bugprone-easily-swappable-parameters) */
 static int encoding_cmp(const void *key, const void *mem) {
   const char *k = key;
   const char *m = mem;
   return memcmp(k, m, 16);
 }
 
-static const byte *ckey2ekey(const struct encoding *e, const byte *ckey) {
+static const byte *ckey2ekey(const struct tactless_encoding *e,
+                             const byte *ckey) {
   const byte *p = bsearch(ckey, e->data, e->n, 32, encoding_cmp);
   return p ? p + 16 : 0;
 }
@@ -760,7 +770,7 @@ struct tactless {
   struct versions versions;
   struct build_config build_config;
   struct cdn_config cdn_config;
-  struct encoding encoding;
+  struct tactless_encoding encoding;
   struct root root;
 };
 
@@ -861,7 +871,7 @@ void tactless_dump(const struct tactless *t) {
 
 void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
-  free(t->encoding.data);
+  tactless_encoding_free(&t->encoding);
   curl_easy_cleanup(t->curl);
   free(t);
 }
