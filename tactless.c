@@ -441,7 +441,11 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
   if ((p - s) % 33 != 0) {
     return 0;
   }
-  size_t n = (p - s) / 33;
+  size_t nn = (p - s) / 33;
+  if (nn > INT_MAX) {
+    return 0;
+  }
+  int n = (int)nn;
   byte(*a)[16] = malloc(sizeof(byte[16]) * n);
   if (!a) {
     return 0;
