@@ -647,6 +647,7 @@ static int download_encoding(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
+/* NOLINTNEXTLINE(bugprone-easily-swappable-parameters) */
 static int encoding_cmp(const void *key, const void *mem) {
   const char *k = key;
   const char *m = mem;
