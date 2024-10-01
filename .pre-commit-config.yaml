@@ -17,6 +17,24 @@ repos:
   hooks:
   - id: cmake-format
   - id: cmake-lint
+- repo: local
+  hooks:
+  - id: configure
+    entry: cmake -B build
+    name: configure
+    language: system
+    pass_filenames: false
+  - id: build
+    entry: cmake --build build
+    name: build
+    language: system
+    pass_filenames: false
+  - id: clang-tidy
+    entry: clang-tidy -p build
+    name: clang-tidy
+    language: python
+    additional_dependencies: [clang-tidy]
+    types: [c]
 - repo: meta
   hooks:
   - id: check-hooks-apply
