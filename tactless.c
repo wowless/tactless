@@ -118,7 +118,6 @@ static int parse_hash(const char *s, char delim, byte *hash) {
   }
   unsigned int x;
   for (; s != end; s += 2, ++hash) {
-    /* NOLINTNEXTLINE(clang-analyzer-security.*) */
     if (sscanf(s, "%02x", &x) != 1) {
       return 0;
     }
@@ -169,6 +168,7 @@ static byte *readall(const char *filename, size_t *size) {
     return 0;
   }
   struct stat stat;
+  /* NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations) */
   if (fstat(fileno(f), &stat) != 0) {
     fclose(f);
     return 0;
