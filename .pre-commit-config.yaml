@@ -20,7 +20,7 @@ repos:
 - repo: local
   hooks:
   - id: configure
-    entry: cmake -B build
+    entry: cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=YES
     name: configure
     language: system
     pass_filenames: false
