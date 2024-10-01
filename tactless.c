@@ -232,7 +232,7 @@ static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
   if (size < 8) {
     return 0;
   }
-  if (memcmp(s, "BLTE", 4)) {
+  if (memcmp(s, "BLTE", 4) != 0) {
     return 0;
   }
   uint32_t header_size = uint32be(s + 4);
@@ -730,7 +730,7 @@ static int parse_root(const byte *s, size_t size, struct root *root) {
   if (size < 4) {
     return 0;
   }
-  if (memcmp(s, "TSFM", 4)) {
+  if (memcmp(s, "TSFM", 4) != 0) {
     return parse_root_legacy(s, size, root);
   } else {
     return parse_root_mfst(s, size, root);
