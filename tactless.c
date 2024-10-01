@@ -595,7 +595,7 @@ static int parse_encoding(byte *s, size_t size, struct encoding *e) {
     return 0;
   }
   const byte *index = s + 22 + espec_block_size;
-  const byte *data = index + 32 * cekey_page_count;
+  const byte *data = index + 32L * cekey_page_count;
   int entries = 0;
   for (const byte *ic = index, *dc = data; ic != data; ic += 32, dc += 4096) {
     if (!md5check(dc, 4096, ic + 16)) {
@@ -615,7 +615,7 @@ static int parse_encoding(byte *s, size_t size, struct encoding *e) {
   if (!entries) {
     return 0;
   }
-  byte *arr = malloc(entries * 32);
+  byte *arr = malloc(entries * 32L);
   if (!arr) {
     return 0;
   }

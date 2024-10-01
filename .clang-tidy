@@ -3,7 +3,6 @@ Checks:
   bugprone-*,
   clang-analyzer-*,
   clang-diagnostic-*,
-  -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-narrowing-conversions,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
 
@@ -12,6 +11,5 @@ WarningsAsErrors:
   bugprone-*,
   clang-analyzer-*,
   clang-diagnostic-*,
-  -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-narrowing-conversions,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
