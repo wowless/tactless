@@ -1,2 +1,2 @@
-Checks:
-- -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+Checks: '-*,clang-analyzer-*,clang-diagnostic-*'
+WarningsAsErrors: '-*,clang-analyzer-*,clang-diagnostic-*'
