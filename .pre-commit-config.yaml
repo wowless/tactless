@@ -20,17 +20,17 @@ repos:
 - repo: local
   hooks:
   - id: configure
-    entry: cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    entry: cmake -B .build-pre-commit -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     name: configure
     language: system
     pass_filenames: false
   - id: build
-    entry: cmake --build build
+    entry: cmake --build .build-pre-commit
     name: build
     language: system
     pass_filenames: false
   - id: clang-tidy
-    entry: clang-tidy -p build
+    entry: clang-tidy -p .build-pre-commit
     name: clang-tidy
     language: python
     additional_dependencies: [clang-tidy]
