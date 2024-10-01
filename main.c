@@ -15,6 +15,17 @@ static int dump_encoding(const unsigned char *text, size_t size) {
   return 1;
 }
 
+static int dump_archive_index(const unsigned char *text, size_t size) {
+  struct tactless_archive_index a;
+  if (!tactless_archive_index_parse(text, size, &a)) {
+    fputs("parse error\n", stderr);
+    return 0;
+  }
+  tactless_archive_index_dump(&a);
+  tactless_archive_index_free(&a);
+  return 1;
+}
+
 static int dump(const char *type, const char *filename) {
   size_t size;
   unsigned char *text = tactless_readfile(filename, &size);
@@ -24,6 +35,8 @@ static int dump(const char *type, const char *filename) {
   int ret = 1;
   if (strcmp(type, "encoding") == 0) {
     ret = dump_encoding(text, size);
+  } else if (strcmp(type, "archive_index") == 0) {
+    ret = dump_archive_index(text, size);
   } else {
     fputs("invalid type\n", stderr);
     ret = 0;

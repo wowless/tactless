@@ -20,6 +20,13 @@ int tactless_encoding_parse(const unsigned char *s, size_t n,
 void tactless_encoding_dump(const struct tactless_encoding *e);
 void tactless_encoding_free(struct tactless_encoding *e);
 
+struct tactless_archive_index {};
+
+int tactless_archive_index_parse(const unsigned char *s, size_t n,
+                                 struct tactless_archive_index *a);
+void tactless_archive_index_dump(const struct tactless_archive_index *a);
+void tactless_archive_index_free(struct tactless_archive_index *a);
+
 unsigned char *tactless_readfile(const char *filename, size_t *size);
 
 #endif

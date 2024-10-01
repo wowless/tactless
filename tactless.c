@@ -484,6 +484,17 @@ struct multi_collect {
   CURL *curl;
 };
 
+int tactless_archive_index_parse(const byte *s, size_t n,
+                                 struct tactless_archive_index *a) {
+  return 1;
+}
+
+void tactless_archive_index_dump(const struct tactless_archive_index *a) {
+  puts("archive index goes here");
+}
+
+void tactless_archive_index_free(struct tactless_archive_index *a) {}
+
 static int download_archive_index_multi(const struct cdns *cdns,
                                         const struct cdn_config *cdn_config,
                                         struct multi_collect *c, CURLM *multi) {
