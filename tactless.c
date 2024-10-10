@@ -221,9 +221,13 @@ static uint32_t uint32le(const byte *s) {
   return s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 }
 
+static void md5sum(const byte *s, size_t size, byte *digest) {
+  MD5(s, size, digest); /* NOLINT(clang-diagnostic-deprecated-declarations) */
+}
+
 static int md5check(const byte *s, size_t size, const byte *md5) {
   byte digest[16];
-  MD5(s, size, digest); /* NOLINT(clang-diagnostic-deprecated-declarations) */
+  md5sum(s, size, digest);
   return memcmp(digest, md5, 16) == 0;
 }
 
@@ -486,11 +490,18 @@ struct multi_collect {
 
 int tactless_archive_index_parse(const byte *s, size_t n,
                                  struct tactless_archive_index *a) {
+  if (n < 28) {
+    return 0;
+  }
+  const byte *footer = s + n - 28;
+  md5sum(footer, 28, a->footer_checksum);
   return 1;
 }
 
 void tactless_archive_index_dump(const struct tactless_archive_index *a) {
-  puts("archive index goes here");
+  char hex[33];
+  hash2hex(a->footer_checksum, hex);
+  printf("footer checksum = %s\n", hex);
 }
 
 void tactless_archive_index_free(struct tactless_archive_index *a) {}

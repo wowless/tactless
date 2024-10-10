@@ -21,7 +21,7 @@ void tactless_encoding_dump(const struct tactless_encoding *e);
 void tactless_encoding_free(struct tactless_encoding *e);
 
 struct tactless_archive_index {
-  int dummy;
+  unsigned char footer_checksum[16];
 };
 
 int tactless_archive_index_parse(const unsigned char *s, size_t n,
