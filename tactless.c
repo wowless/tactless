@@ -554,7 +554,21 @@ int tactless_archive_index_parse(const byte *s, size_t n,
       return 0;
     }
   }
-  a->nelem = uint32le(footer + 16);
+  unsigned int ec = 0;
+  for (const byte *b = s, *e = lasts; b != lasts; b += 4096, e += 16) {
+    const byte *be = b + 4096 - 24;
+    int found = 0;
+    for (const byte *c = b; c <= be && !found; c += 24, ++ec) {
+      found = memcmp(c, e, 16) == 0;
+    }
+    if (!found) {
+      return 0;
+    }
+  }
+  if (ec != uint32le(footer + 16)) {
+    return 0;
+  }
+  a->nelem = ec;
   md5sum(footer, 28, a->footer_checksum);
   return 1;
 }
