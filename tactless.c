@@ -548,6 +548,12 @@ int tactless_archive_index_parse(const byte *s, size_t n,
     /* checksum size mismatch */
     return 0;
   }
+  for (const byte *b = s, *h = bhashes; b != lasts; b += 4096, h += 8) {
+    md5sum(b, 4096, digest);
+    if (memcmp(digest, h, 8) != 0) {
+      return 0;
+    }
+  }
   a->nelem = uint32le(footer + 16);
   md5sum(footer, 28, a->footer_checksum);
   return 1;
