@@ -792,12 +792,8 @@ static const byte *ckey2ekey(const struct tactless_encoding *e,
   return p ? p + 16 : 0;
 }
 
-struct root {
-  uint32_t total_file_count;
-  uint32_t named_file_count;
-};
-
-static int parse_root_legacy(const byte *s, size_t size, struct root *root) {
+static int parse_root_legacy(const byte *s, size_t size,
+                             struct tactless_root *root) {
   const byte *end = s + size;
   uint32_t num_files = 0;
   while (s != end) {
@@ -817,7 +813,8 @@ static int parse_root_legacy(const byte *s, size_t size, struct root *root) {
   return 1;
 }
 
-static int parse_root_mfst(const byte *s, size_t size, struct root *root) {
+static int parse_root_mfst(const byte *s, size_t size,
+                           struct tactless_root *root) {
   if (size < 12) {
     return 0;
   }
@@ -860,7 +857,8 @@ static int parse_root_mfst(const byte *s, size_t size, struct root *root) {
   return 1;
 }
 
-static int parse_root(const byte *s, size_t size, struct root *root) {
+int tactless_root_parse(const byte *s, size_t size,
+                        struct tactless_root *root) {
   if (size < 4) {
     return 0;
   }
@@ -871,14 +869,21 @@ static int parse_root(const byte *s, size_t size, struct root *root) {
   }
 }
 
+void tactless_root_dump(const struct tactless_root *root) {
+  printf("total file count = %d\n", root->total_file_count);
+  printf("named file count = %d\n", root->named_file_count);
+}
+
+void tactless_root_free(struct tactless_root *root) {}
+
 static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
-                         const byte *ekey, struct root *root) {
+                         const byte *ekey, struct tactless_root *root) {
   size_t size;
   byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
-  int ret = parse_root(text, size, root);
+  int ret = tactless_root_parse(text, size, root);
   free(text);
   return ret;
 }
@@ -890,7 +895,7 @@ struct tactless {
   struct build_config build_config;
   struct cdn_config cdn_config;
   struct tactless_encoding encoding;
-  struct root root;
+  struct tactless_root root;
 };
 
 static int tactless_init(struct tactless *t, const char *product) {

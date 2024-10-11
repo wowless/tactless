@@ -4,6 +4,17 @@
 
 #include "tactless.h"
 
+static int dump_root(const unsigned char *text, size_t size) {
+  struct tactless_root r;
+  if (!tactless_root_parse(text, size, &r)) {
+    fputs("parse error\n", stderr);
+    return 0;
+  }
+  tactless_root_dump(&r);
+  tactless_root_free(&r);
+  return 1;
+}
+
 static int dump_encoding(const unsigned char *text, size_t size) {
   struct tactless_encoding e;
   if (!tactless_encoding_parse(text, size, &e)) {
@@ -33,7 +44,9 @@ static int dump(const char *type, const char *filename) {
     return 0;
   }
   int ret = 1;
-  if (strcmp(type, "encoding") == 0) {
+  if (strcmp(type, "root") == 0) {
+    ret = dump_root(text, size);
+  } else if (strcmp(type, "encoding") == 0) {
     ret = dump_encoding(text, size);
   } else if (strcmp(type, "archive_index") == 0) {
     ret = dump_archive_index(text, size);

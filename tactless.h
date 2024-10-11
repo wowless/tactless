@@ -10,6 +10,16 @@ tactless *tactless_open(const char *product);
 void tactless_close(tactless *t);
 void tactless_dump(const tactless *t);
 
+struct tactless_root {
+  unsigned int total_file_count;
+  unsigned int named_file_count;
+};
+
+int tactless_root_parse(const unsigned char *s, size_t n,
+                        struct tactless_root *r);
+void tactless_root_dump(const struct tactless_root *r);
+void tactless_root_free(struct tactless_root *r);
+
 struct tactless_encoding {
   unsigned char *data;
   int n;
