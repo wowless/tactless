@@ -508,6 +508,47 @@ int tactless_archive_index_parse(const byte *s, size_t n,
     /* toc checksum mismatch */
     return 0;
   }
+  /*
+   * The footer internal hash is computed on the last 20 bytes, but with the
+   * last 8 bytes of that zeroed out. Obviously.
+   */
+  byte footcomp[20];
+  memcpy(footcomp, footer + 8, 12);
+  memset(footcomp + 12, 0, 8);
+  md5sum(footcomp, 20, digest);
+  if (memcmp(digest, footer + 20, 8) != 0) {
+    /* internal footer checksum */
+    return 0;
+  }
+  if (footer[8] != 1) {
+    /* version mismatch */
+    return 0;
+  }
+  if (footer[9] != 0 || footer[10] != 0) {
+    /* unknown fields mismatch */
+    return 0;
+  }
+  if (footer[11] != 4) {
+    /* block size mismatch */
+    return 0;
+  }
+  if (footer[12] != 4) {
+    /* offset bytes mismatch */
+    return 0;
+  }
+  if (footer[13] != 4) {
+    /* size bytes mismatch */
+    return 0;
+  }
+  if (footer[14] != 16) {
+    /* key size mismatch */
+    return 0;
+  }
+  if (footer[15] != 8) {
+    /* checksum size mismatch */
+    return 0;
+  }
+  a->nelem = uint32le(footer + 16);
   md5sum(footer, 28, a->footer_checksum);
   return 1;
 }
@@ -516,6 +557,7 @@ void tactless_archive_index_dump(const struct tactless_archive_index *a) {
   char hex[33];
   hash2hex(a->footer_checksum, hex);
   printf("footer checksum = %s\n", hex);
+  printf("num elements = %u\n", a->nelem);
 }
 
 void tactless_archive_index_free(struct tactless_archive_index *a) {}
