@@ -554,7 +554,7 @@ int tactless_archive_index_parse(const byte *s, size_t n,
       return 0;
     }
   }
-  unsigned int ec = 0;
+  size_t ec = 0;
   for (const byte *b = s, *e = lasts; b != lasts; b += 4096, e += 16) {
     const byte *be = b + 4096 - 24;
     int found = 0;
@@ -565,22 +565,43 @@ int tactless_archive_index_parse(const byte *s, size_t n,
       return 0;
     }
   }
-  if (ec != uint32le(footer + 16)) {
+  if (ec == 0 || ec != uint32le(footer + 16)) {
     return 0;
   }
-  a->nelem = ec;
-  md5sum(footer, 28, a->footer_checksum);
+  byte *data = malloc(ec * 24);
+  if (!data) {
+    return 0;
+  }
+  byte *p = data;
+  for (const byte *b = s, *e = lasts; b != lasts; b += 4096, e += 16) {
+    const byte *c = b;
+    for (int found = 0; !found; c += 24) {
+      found = memcmp(c, e, 16) == 0;
+    }
+    memcpy(p, b, c - b);
+    p += c - b;
+  }
+  md5sum(footer, 28, a->name);
+  a->data = data;
+  a->n = ec;
   return 1;
 }
 
 void tactless_archive_index_dump(const struct tactless_archive_index *a) {
   char hex[33];
-  hash2hex(a->footer_checksum, hex);
-  printf("footer checksum = %s\n", hex);
-  printf("num elements = %u\n", a->nelem);
+  hash2hex(a->name, hex);
+  printf("name = %s\n", hex);
+  printf("num elements = %zu\n", a->n);
+  const byte *end = a->data + a->n * 24;
+  for (const byte *p = a->data; p < end; p += 24) {
+    hash2hex(p, hex);
+    printf("%s %10u %10u\n", hex, uint32be(p + 16), uint32be(p + 20));
+  }
 }
 
-void tactless_archive_index_free(struct tactless_archive_index *a) {}
+void tactless_archive_index_free(struct tactless_archive_index *a) {
+  free(a->data);
+}
 
 static int download_archive_index_multi(const struct cdns *cdns,
                                         const struct cdn_config *cdn_config,
