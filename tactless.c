@@ -491,9 +491,23 @@ struct multi_collect {
 int tactless_archive_index_parse(const byte *s, size_t n,
                                  struct tactless_archive_index *a) {
   if (n < 28) {
+    /* footer too small */
     return 0;
   }
+  if ((n - 28) % (4096 + 24) != 0) {
+    /* has an incomplete block */
+    return 0;
+  }
+  size_t nb = (n - 28) / (4096 + 24);
   const byte *footer = s + n - 28;
+  const byte *bhashes = footer - nb * 8;
+  const byte *lasts = bhashes - nb * 16;
+  byte digest[16];
+  md5sum(lasts, nb * 24, digest);
+  if (memcmp(digest, footer, 8) != 0) {
+    /* toc checksum mismatch */
+    return 0;
+  }
   md5sum(footer, 28, a->footer_checksum);
   return 1;
 }
