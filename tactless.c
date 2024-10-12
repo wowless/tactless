@@ -483,11 +483,6 @@ static int download_cdn_config(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
-struct multi_collect {
-  struct collect_buffer buffer;
-  CURL *curl;
-};
-
 int tactless_archive_index_parse(const byte *s, size_t n,
                                  struct tactless_archive_index *a) {
   if (n < 28) {
@@ -602,6 +597,11 @@ void tactless_archive_index_dump(const struct tactless_archive_index *a) {
 void tactless_archive_index_free(struct tactless_archive_index *a) {
   free(a->data);
 }
+
+struct multi_collect {
+  struct collect_buffer buffer;
+  CURL *curl;
+};
 
 static int download_archive_index_multi(const struct cdns *cdns,
                                         const struct cdn_config *cdn_config,
