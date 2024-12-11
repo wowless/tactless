@@ -2,6 +2,7 @@
 	"name": "ferronn-dev/ctactless",
 	"image": "mcr.microsoft.com/devcontainers/cpp:bullseye",
 	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
 		"ghcr.io/devcontainers-contrib/features/pre-commit:2": {}
 	}
 }
