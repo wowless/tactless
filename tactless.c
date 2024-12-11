@@ -668,8 +668,9 @@ static int download_archive_index_multi(const struct cdns *cdns,
     byte *p = malloc(an * 24);
     byte *c = p;
     for (int i = 0; i < n; ++i) {
-      memcpy(c, as[i].data, as[i].n);
-      c += as[i].n;
+      size_t an = as[i].n * 24;
+      memcpy(c, as[i].data, an);
+      c += an;
     }
     /* TODO sort */
     memset(a->name, 0, sizeof(a->name));
