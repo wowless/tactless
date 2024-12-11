@@ -642,6 +642,8 @@ static int download_archive_index_multi(const struct cdns *cdns,
         rem != n - i - 1) {
       return 0;
     }
+  }
+  for (int i = 0; i < n; ++i) {
     char filename[45];
     hash2hex(cdn_config->archives[i], hex);
     sprintf(filename, "cache/%s.index", hex);
