@@ -1031,6 +1031,7 @@ void tactless_dump(const struct tactless *t) {
 void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   tactless_encoding_free(&t->encoding);
+  tactless_archive_index_free(&t->archive_index);
   curl_easy_cleanup(t->curl);
   free(t);
 }
