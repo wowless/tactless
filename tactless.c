@@ -835,7 +835,7 @@ static int parse_root_mfst(const byte *s, size_t size,
   uint32_t total_files = 0;
   uint32_t named_files = 0;
   while (s != end) {
-    if (end - s < 12) {
+    if (end - s < bhsz) {
       return 0;
     }
     uint32_t num_records = uint32le(s);
