@@ -824,9 +824,11 @@ static int parse_root_mfst(const byte *s, size_t size,
   if (uint32le(s + 4) != 24) {
     return 0;
   }
-  if (uint32le(s + 8) != 1) {
+  uint32_t version = uint32le(s + 8);
+  if (version != 1 && version != 2) {
     return 0;
   }
+  size_t bhsz = version == 1 ? 12 : 17;
   uint32_t total_file_count = uint32le(s + 12);
   uint32_t named_file_count = uint32le(s + 16);
   s += 24;
@@ -837,9 +839,11 @@ static int parse_root_mfst(const byte *s, size_t size,
       return 0;
     }
     uint32_t num_records = uint32le(s);
-    uint32_t flags = uint32le(s + 4);
+    uint32_t flags = version == 1
+                         ? uint32le(s + 4)
+                         : (uint32le(s + 8) | uint32le(s + 12) | (s[16] << 17));
     size_t rsz = 20 + ((flags & 0x10000000) ? 0 : 8);
-    size_t bsz = 12 + rsz * num_records;
+    size_t bsz = bhsz + rsz * num_records;
     if (end - s < bsz) {
       return 0;
     }
