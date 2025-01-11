@@ -817,23 +817,19 @@ static int parse_root_legacy(const byte *s, size_t size,
 
 static int parse_root_mfst(const byte *s, size_t size,
                            struct tactless_root *root) {
-  if (size < 12) {
+  if (size < 24) {
     return 0;
   }
   const byte *end = s + size;
-  uint32_t total_file_count = uint32le(s + 4);
-  uint32_t named_file_count = uint32le(s + 8);
-  if (total_file_count == 24 && named_file_count == 1) {
-    if (size < 24) {
-      return 0;
-    }
-    /* Treat this as having the new-style header. */
-    total_file_count = uint32le(s + 12);
-    named_file_count = uint32le(s + 16);
-    s += 24;
-  } else {
-    s += 12;
+  if (uint32le(s + 4) != 24) {
+    return 0;
   }
+  if (uint32le(s + 8) != 1) {
+    return 0;
+  }
+  uint32_t total_file_count = uint32le(s + 12);
+  uint32_t named_file_count = uint32le(s + 16);
+  s += 24;
   uint32_t total_files = 0;
   uint32_t named_files = 0;
   while (s != end) {
