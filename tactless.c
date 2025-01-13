@@ -603,10 +603,28 @@ struct multi_collect {
   CURL *curl;
 };
 
-static int download_archive_index_multi(const struct cdns *cdns,
-                                        const struct cdn_config *cdn_config,
-                                        struct multi_collect *c, CURLM *multi,
-                                        struct tactless_archive_index *a) {
+struct archives_index {
+  unsigned char *data;
+  size_t n;
+};
+
+static void archives_index_dump(const struct archives_index *a) {
+  char hex1[33], hex2[33];
+  printf("num elements = %zu\n", a->n);
+  const byte *end = a->data + a->n * 40;
+  for (const byte *p = a->data; p < end; p += 40) {
+    hash2hex(p, hex1);
+    hash2hex(p + 16, hex2);
+    printf("%s %s %10u %10u\n", hex1, hex2, uint32be(p + 32), uint32be(p + 36));
+  }
+}
+
+int archive_sort_cmp(const void *a, const void *b) { return memcmp(a, b, 40); }
+
+static int download_archives_index_multi(const struct cdns *cdns,
+                                         const struct cdn_config *cdn_config,
+                                         struct multi_collect *c, CURLM *multi,
+                                         struct archives_index *a) {
   int n = cdn_config->narchives;
   if (n <= 0) {
     return 0;
@@ -665,15 +683,18 @@ static int download_archive_index_multi(const struct cdns *cdns,
     for (int i = 0; i < n; ++i) {
       an += as[i].n;
     }
-    byte *p = malloc(an * 24);
+    byte *p = malloc(an * 40);
     byte *c = p;
     for (int i = 0; i < n; ++i) {
-      size_t an = as[i].n * 24;
-      memcpy(c, as[i].data, an);
-      c += an;
+      byte *a = as[i].data;
+      byte *e = a + as[i].n * 24;
+      for (; a < e; a += 24, c += 40) {
+        memcpy(c, a, 16);
+        memcpy(c + 16, as[i].name, 16);
+        memcpy(c + 32, a + 16, 8);
+      }
     }
-    /* TODO sort */
-    memset(a->name, 0, sizeof(a->name));
+    qsort(p, an, 40, archive_sort_cmp);
     a->data = p;
     a->n = an;
   }
@@ -684,13 +705,13 @@ static int download_archive_index_multi(const struct cdns *cdns,
   return overall;
 }
 
-static int download_archive_index(const struct cdns *cdns,
-                                  const struct cdn_config *cdn_config,
-                                  struct tactless_archive_index *a) {
+static int download_archives_index(const struct cdns *cdns,
+                                   const struct cdn_config *cdn_config,
+                                   struct archives_index *a) {
   int n = cdn_config->narchives;
   struct multi_collect *c = calloc(n, sizeof(*c));
   CURLM *m = curl_multi_init();
-  int ret = c && m && download_archive_index_multi(cdns, cdn_config, c, m, a);
+  int ret = c && m && download_archives_index_multi(cdns, cdn_config, c, m, a);
   if (c) {
     for (int i = 0; i < n; ++i) {
       curl_multi_remove_handle(m, c[i].curl);
@@ -929,7 +950,7 @@ struct tactless {
   struct cdn_config cdn_config;
   struct tactless_encoding encoding;
   struct tactless_root root;
-  struct tactless_archive_index archive_index;
+  struct archives_index archives_index;
 };
 
 static int tactless_init(struct tactless *t, const char *product) {
@@ -967,7 +988,7 @@ static int tactless_init(struct tactless *t, const char *product) {
   if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
     return 0;
   }
-  if (!download_archive_index(&t->cdns, &t->cdn_config, &t->archive_index)) {
+  if (!download_archives_index(&t->cdns, &t->cdn_config, &t->archives_index)) {
     return 0;
   }
   return 1;
@@ -1025,13 +1046,13 @@ void tactless_dump(const struct tactless *t) {
   }
   printf("root total file count = %d\n", t->root.total_file_count);
   printf("root named file count = %d\n", t->root.named_file_count);
-  printf("archive index entries = %zu\n", t->archive_index.n);
+  printf("archive index entries = %zu\n", t->archives_index.n);
 }
 
 void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   tactless_encoding_free(&t->encoding);
-  tactless_archive_index_free(&t->archive_index);
+  free(t->archives_index.data);
   curl_easy_cleanup(t->curl);
   free(t);
 }
