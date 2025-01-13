@@ -601,17 +601,52 @@ void tactless_archive_index_free(struct tactless_archive_index *a) {
 struct multi_collect {
   struct collect_buffer buffer;
   CURL *curl;
+  struct tactless_archive_index index;
+  int cached;
 };
 
-static int download_archive_index_multi(const struct cdns *cdns,
-                                        const struct cdn_config *cdn_config,
-                                        struct multi_collect *c, CURLM *multi) {
+struct archives_index {
+  unsigned char *data;
+  size_t n;
+};
+
+static void archives_index_dump(const struct archives_index *a) {
+  char hex1[33], hex2[33];
+  printf("num elements = %zu\n", a->n);
+  const byte *end = a->data + a->n * 40;
+  for (const byte *p = a->data; p < end; p += 40) {
+    hash2hex(p, hex1);
+    hash2hex(p + 16, hex2);
+    printf("%s %s %10u %10u\n", hex1, hex2, uint32be(p + 32), uint32be(p + 36));
+  }
+}
+
+int archive_sort_cmp(const void *a, const void *b) { return memcmp(a, b, 40); }
+
+static int download_archives_index_multi(const struct cdns *cdns,
+                                         const struct cdn_config *cdn_config,
+                                         struct multi_collect *c, CURLM *multi,
+                                         struct archives_index *a) {
   int n = cdn_config->narchives;
+  if (n <= 0) {
+    return 0;
+  }
   curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   char url[256];
   char hex[33];
+  int nf = 0;
   for (int i = 0; i < n; ++i) {
+    char filename[45];
     hash2hex(cdn_config->archives[i], hex);
+    sprintf(filename, "cache/%s.index", hex);
+    size_t size;
+    byte *text = tactless_readfile(filename, &size);
+    c[i].cached = text && tactless_archive_index_parse(text, size, &c[i].index);
+    free(text);
+    if (c[i].cached) {
+      continue;
+    }
+    nf++;
     if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
       return 0;
     }
@@ -627,7 +662,7 @@ static int download_archive_index_multi(const struct cdns *cdns,
     curl_multi_add_handle(multi, curl);
     c[i].curl = curl;
   }
-  for (int nn = n; nn;) {
+  for (int nn = nf; nn;) {
     if (curl_multi_perform(multi, &nn) != CURLM_OK) {
       return 0;
     }
@@ -635,7 +670,7 @@ static int download_archive_index_multi(const struct cdns *cdns,
       return 0;
     }
   }
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < nf; ++i) {
     int rem;
     CURLMsg *msg = curl_multi_info_read(multi, &rem);
     if (msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK ||
@@ -643,28 +678,58 @@ static int download_archive_index_multi(const struct cdns *cdns,
       return 0;
     }
   }
+  int overall = 1;
   for (int i = 0; i < n; ++i) {
-    char filename[45];
-    hash2hex(cdn_config->archives[i], hex);
-    sprintf(filename, "cache/%s.index", hex);
-    if (!writeall(filename, c[i].buffer.data, c[i].buffer.size)) {
-      return 0;
+    if (c[i].cached) {
+      continue;
+    }
+    int ret = tactless_archive_index_parse(c[i].buffer.data, c[i].buffer.size,
+                                           &c[i].index);
+    if (ret) {
+      char filename[45];
+      hash2hex(cdn_config->archives[i], hex);
+      sprintf(filename, "cache/%s.index", hex);
+      ret = writeall(filename, c[i].buffer.data, c[i].buffer.size);
+    }
+    overall = overall && ret;
+  }
+  if (!overall) {
+    return 0;
+  }
+  size_t an = 0;
+  for (int i = 0; i < n; ++i) {
+    an += c[i].index.n;
+  }
+  byte *p = malloc(an * 40);
+  byte *q = p;
+  for (int i = 0; i < n; ++i) {
+    byte *a = c[i].index.data;
+    byte *e = a + c[i].index.n * 24;
+    for (; a < e; a += 24, q += 40) {
+      memcpy(q, a, 16);
+      memcpy(q + 16, c[i].index.name, 16);
+      memcpy(q + 32, a + 16, 8);
     }
   }
+  qsort(p, an, 40, archive_sort_cmp);
+  a->data = p;
+  a->n = an;
   return 1;
 }
 
-static int download_archive_index(const struct cdns *cdns,
-                                  const struct cdn_config *cdn_config) {
+static int download_archives_index(const struct cdns *cdns,
+                                   const struct cdn_config *cdn_config,
+                                   struct archives_index *a) {
   int n = cdn_config->narchives;
   struct multi_collect *c = calloc(n, sizeof(*c));
   CURLM *m = curl_multi_init();
-  int ret = c && m && download_archive_index_multi(cdns, cdn_config, c, m);
+  int ret = c && m && download_archives_index_multi(cdns, cdn_config, c, m, a);
   if (c) {
     for (int i = 0; i < n; ++i) {
       curl_multi_remove_handle(m, c[i].curl);
       curl_easy_cleanup(c[i].curl);
       free(c[i].buffer.data);
+      free(c[i].index.data);
     }
   }
   free(c);
@@ -898,6 +963,7 @@ struct tactless {
   struct cdn_config cdn_config;
   struct tactless_encoding encoding;
   struct tactless_root root;
+  struct archives_index archives_index;
 };
 
 static int tactless_init(struct tactless *t, const char *product) {
@@ -935,7 +1001,7 @@ static int tactless_init(struct tactless *t, const char *product) {
   if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
     return 0;
   }
-  if (!download_archive_index(&t->cdns, &t->cdn_config)) {
+  if (!download_archives_index(&t->cdns, &t->cdn_config, &t->archives_index)) {
     return 0;
   }
   return 1;
@@ -993,11 +1059,13 @@ void tactless_dump(const struct tactless *t) {
   }
   printf("root total file count = %d\n", t->root.total_file_count);
   printf("root named file count = %d\n", t->root.named_file_count);
+  printf("archive index entries = %zu\n", t->archives_index.n);
 }
 
 void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   tactless_encoding_free(&t->encoding);
+  free(t->archives_index.data);
   curl_easy_cleanup(t->curl);
   free(t);
 }
