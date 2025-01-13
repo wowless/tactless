@@ -601,6 +601,7 @@ void tactless_archive_index_free(struct tactless_archive_index *a) {
 struct multi_collect {
   struct collect_buffer buffer;
   CURL *curl;
+  struct tactless_archive_index index;
 };
 
 struct archives_index {
@@ -665,11 +666,10 @@ static int download_archives_index_multi(const struct cdns *cdns,
       return 0;
     }
   }
-  struct tactless_archive_index *as = calloc(n, sizeof(*as));
   int overall = 1;
   for (int i = 0; i < n; ++i) {
     int ret = tactless_archive_index_parse(c[i].buffer.data, c[i].buffer.size,
-                                           as + i);
+                                           &c[i].index);
     if (ret) {
       char filename[45];
       hash2hex(cdn_config->archives[i], hex);
@@ -678,31 +678,28 @@ static int download_archives_index_multi(const struct cdns *cdns,
     }
     overall = overall && ret;
   }
-  if (overall) {
-    size_t an = 0;
-    for (int i = 0; i < n; ++i) {
-      an += as[i].n;
-    }
-    byte *p = malloc(an * 40);
-    byte *c = p;
-    for (int i = 0; i < n; ++i) {
-      byte *a = as[i].data;
-      byte *e = a + as[i].n * 24;
-      for (; a < e; a += 24, c += 40) {
-        memcpy(c, a, 16);
-        memcpy(c + 16, as[i].name, 16);
-        memcpy(c + 32, a + 16, 8);
-      }
-    }
-    qsort(p, an, 40, archive_sort_cmp);
-    a->data = p;
-    a->n = an;
+  if (!overall) {
+    return 0;
   }
+  size_t an = 0;
   for (int i = 0; i < n; ++i) {
-    tactless_archive_index_free(as + i);
+    an += c[i].index.n;
   }
-  free(as);
-  return overall;
+  byte *p = malloc(an * 40);
+  byte *q = p;
+  for (int i = 0; i < n; ++i) {
+    byte *a = c[i].index.data;
+    byte *e = a + c[i].index.n * 24;
+    for (; a < e; a += 24, q += 40) {
+      memcpy(q, a, 16);
+      memcpy(q + 16, c[i].index.name, 16);
+      memcpy(q + 32, a + 16, 8);
+    }
+  }
+  qsort(p, an, 40, archive_sort_cmp);
+  a->data = p;
+  a->n = an;
+  return 1;
 }
 
 static int download_archives_index(const struct cdns *cdns,
@@ -717,6 +714,7 @@ static int download_archives_index(const struct cdns *cdns,
       curl_multi_remove_handle(m, c[i].curl);
       curl_easy_cleanup(c[i].curl);
       free(c[i].buffer.data);
+      free(c[i].index.data);
     }
   }
   free(c);
