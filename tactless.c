@@ -602,6 +602,7 @@ struct multi_collect {
   struct collect_buffer buffer;
   CURL *curl;
   struct tactless_archive_index index;
+  int cached;
 };
 
 struct archives_index {
@@ -633,8 +634,19 @@ static int download_archives_index_multi(const struct cdns *cdns,
   curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   char url[256];
   char hex[33];
+  int nf = 0;
   for (int i = 0; i < n; ++i) {
+    char filename[45];
     hash2hex(cdn_config->archives[i], hex);
+    sprintf(filename, "cache/%s.index", hex);
+    size_t size;
+    byte *text = tactless_readfile(filename, &size);
+    c[i].cached = text && tactless_archive_index_parse(text, size, &c[i].index);
+    free(text);
+    if (c[i].cached) {
+      continue;
+    }
+    nf++;
     if (!mkurl(url, sizeof(url), cdns, "data", hex, ".index")) {
       return 0;
     }
@@ -650,7 +662,7 @@ static int download_archives_index_multi(const struct cdns *cdns,
     curl_multi_add_handle(multi, curl);
     c[i].curl = curl;
   }
-  for (int nn = n; nn;) {
+  for (int nn = nf; nn;) {
     if (curl_multi_perform(multi, &nn) != CURLM_OK) {
       return 0;
     }
@@ -658,7 +670,7 @@ static int download_archives_index_multi(const struct cdns *cdns,
       return 0;
     }
   }
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < nf; ++i) {
     int rem;
     CURLMsg *msg = curl_multi_info_read(multi, &rem);
     if (msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK ||
@@ -668,6 +680,9 @@ static int download_archives_index_multi(const struct cdns *cdns,
   }
   int overall = 1;
   for (int i = 0; i < n; ++i) {
+    if (c[i].cached) {
+      continue;
+    }
     int ret = tactless_archive_index_parse(c[i].buffer.data, c[i].buffer.size,
                                            &c[i].index);
     if (ret) {
