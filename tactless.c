@@ -892,11 +892,12 @@ static int parse_root_legacy(const byte *s, size_t size,
     c += bsz;
     num_files += num_records;
   }
-  if (num_files == 0) {
+  size_t rtsz = num_files * sizeof(struct root_tmp);
+  if (rtsz == 0 || rtsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
     return 0;
   }
-  /* NOLINTNEXTLINE(clang-analyzer-optin.taint.TaintedAlloc) */
-  struct root_tmp *rt = malloc(num_files * sizeof(*rt));
+  struct root_tmp *rt = malloc(rtsz);
   if (!rt) {
     return 0;
   }
