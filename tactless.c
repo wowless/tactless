@@ -68,6 +68,27 @@ static byte *download(CURL *curl, const char *url, size_t *size) {
   return buffer.data;
 }
 
+static byte *download_range(CURL *curl, const char *url, size_t start,
+                            size_t end, size_t *size) {
+  struct collect_buffer buffer;
+  memset(&buffer, 0, sizeof(buffer));
+  char range[50];
+  sprintf(range, "%zu-%zu", start, end);
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_RANGE, range);
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, collect_header_callback);
+  curl_easy_setopt(curl, CURLOPT_HEADERDATA, &buffer);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, collect_callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+  CURLcode code = curl_easy_perform(curl);
+  if (code != CURLE_OK) {
+    free(buffer.data);
+    return NULL;
+  }
+  *size = buffer.received;
+  return buffer.data;
+}
+
 struct cdns {
   char host[128];
   char path[64];
@@ -357,6 +378,45 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
     }
     text = t;
   }
+  if (!md5check(text, *size, ckey)) {
+    free(text);
+    return 0;
+  }
+  if (!writeall(filename, text, *size)) {
+    free(text);
+    return 0;
+  }
+  return text;
+}
+
+static byte *download_from_cdn_archive(CURL *curl, const struct cdns *cdns,
+                                       const byte *archive, size_t esize,
+                                       size_t offset, const byte *ckey,
+                                       const byte *ekey, size_t *size) {
+  char hex[33];
+  hash2hex(ckey, hex);
+  char filename[39];
+  sprintf(filename, "cache/%s", hex);
+  byte *text = tactless_readfile(filename, size);
+  if (text && md5check(text, *size, ckey)) {
+    return text;
+  }
+  free(text);
+  hash2hex(archive, hex);
+  char url[256];
+  if (!mkurl(url, sizeof(url), cdns, "data", hex, "")) {
+    return 0;
+  }
+  text = download_range(curl, url, offset, offset + esize - 1, size);
+  if (!text) {
+    return 0;
+  }
+  byte *t = parse_blte(text, *size, ekey, size);
+  free(text);
+  if (!t) {
+    return 0;
+  }
+  text = t;
   if (!md5check(text, *size, ckey)) {
     free(text);
     return 0;
@@ -1194,11 +1254,21 @@ void tactless_dump(const struct tactless *t) {
       printf("ManifestInterfaceTOCData.db2 ekey = %s\n", hex);
       const unsigned char *db2_ae = ekey2ae(&t->archives_index, db2_ekey);
       if (db2_ae) {
-        hash2hex(db2_ae + 16, hex);
-        printf(
-            "ManifestInterfaceTOCData.db2 archive entry = %s size=%u "
-            "offset=%u\n",
-            hex, uint32be(db2_ae + 32), uint32be(db2_ae + 36));
+        const byte *archive = db2_ae + 16;
+        size_t size = uint32be(db2_ae + 32);
+        size_t offset = uint32be(db2_ae + 36);
+        hash2hex(archive, hex);
+        printf("ManifestInterfaceTOCData.db2 archive = %s\n", hex);
+        printf("ManifestInterfaceTOCData.db2 archive size = %zu\n", size);
+        printf("ManifestInterfaceTOCData.db2 archive offset = %zu\n", offset);
+        size_t db2_size;
+        byte *data =
+            download_from_cdn_archive(t->curl, &t->cdns, archive, size, offset,
+                                      db2_ckey, db2_ekey, &db2_size);
+        if (data) {
+          printf("ManifestInterfaceTOCData.db2 content size = %zu\n", db2_size);
+          free(data);
+        }
       }
     }
   }
