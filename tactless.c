@@ -976,6 +976,8 @@ static int parse_root_tmp(struct root_tmp *rt, size_t n,
   free(rt);
   root->num_fdids = nf;
   root->fdids = fdids;
+  root->num_names = 0;
+  root->names = 0;
   return 1;
 }
 
@@ -1125,9 +1127,21 @@ void tactless_root_dump(const struct tactless_root *root) {
     hash2hex(root->fdids[i].ckey, hex);
     printf("%10d %s\n", root->fdids[i].fdid, hex);
   }
+  printf("num names = %zu\n", root->num_names);
+  byte hash[16];
+  memset(hash, 0, 8);
+  for (size_t i = 0; i < root->num_names; ++i) {
+    memcpy(hash + 8, root->names[i].name, 8);
+    char hex[33];
+    hash2hex(hash, hex);
+    printf("%s %10d\n", hex + 16, root->names[i].fdid);
+  }
 }
 
-void tactless_root_free(struct tactless_root *root) { free(root->fdids); }
+void tactless_root_free(struct tactless_root *root) {
+  free(root->fdids);
+  free(root->names);
+}
 
 static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
                          const byte *ekey, struct tactless_root *root) {
