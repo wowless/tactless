@@ -938,16 +938,23 @@ struct root_tmp {
   byte ckey[16];
 };
 
-int root_tmp_sort_cmp(const void *a, const void *b) {
+static int root_tmp_sort_cmp(const void *a, const void *b) {
   const struct root_tmp *aa = a;
   const struct root_tmp *bb = b;
   return aa->fdid - bb->fdid;
 }
 
-static int parse_root_tmp(struct root_tmp *rt, size_t n,
+static int names_sort_cmp(const void *a, const void *b) {
+  const struct tactless_root_names *aa = a;
+  const struct tactless_root_names *bb = b;
+  return memcmp(aa->name, bb->name, 8);
+}
+
+static int parse_root_tmp(struct root_tmp *rt, size_t nr,
+                          struct tactless_root_names *nt, size_t nn,
                           struct tactless_root *root) {
-  qsort(rt, n, sizeof(*rt), root_tmp_sort_cmp);
-  const struct root_tmp *re = rt + n;
+  qsort(rt, nr, sizeof(*rt), root_tmp_sort_cmp);
+  const struct root_tmp *re = rt + nr;
   size_t nf = 1;
   int32_t fdid = rt->fdid;
   for (const struct root_tmp *r = rt + 1; r != re; ++r) {
@@ -959,6 +966,7 @@ static int parse_root_tmp(struct root_tmp *rt, size_t n,
   struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
   if (!fdids) {
     free(rt);
+    free(nt);
     return 0;
   }
   const struct root_tmp *best = rt;
@@ -976,8 +984,37 @@ static int parse_root_tmp(struct root_tmp *rt, size_t n,
   free(rt);
   root->num_fdids = nf;
   root->fdids = fdids;
-  root->num_names = 0;
-  root->names = 0;
+  qsort(nt, nn, sizeof(*nt), names_sort_cmp);
+  const struct tactless_root_names *ne = nt + nn;
+  size_t nh = 1;
+  const byte *last = nt->name;
+  for (const struct tactless_root_names *n = nt + 1; n != ne; ++n) {
+    if (memcmp(last, n->name, 8) != 0) {
+      ++nh;
+      last = n->name;
+    }
+  }
+  struct tactless_root_names *names = malloc(nh * sizeof(*names)), *nc = names;
+  if (!names) {
+    free(fdids);
+    free(nt);
+    return 0;
+  }
+  const struct tactless_root_names *besth = nt;
+  for (const struct tactless_root_names *n = nt + 1; n != ne; ++n) {
+    if (memcmp(besth->name, n->name, 8) != 0) {
+      memcpy(nc->name, besth->name, 8);
+      nc->fdid = besth->fdid;
+      ++nc;
+      besth = n;
+    }
+    /* TODO validate uniqueness or do scoring */
+  }
+  memcpy(nc->name, besth->name, 8);
+  nc->fdid = besth->fdid;
+  free(nt);
+  root->num_names = nh;
+  root->names = names;
   return 1;
 }
 
@@ -1009,25 +1046,40 @@ static int parse_root_legacy(const byte *s, size_t size,
   if (!rt) {
     return 0;
   }
+  size_t ntsz = num_files * sizeof(struct tactless_root_names);
+  if (ntsz == 0 || ntsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    free(rt);
+    return 0;
+  }
+  struct tactless_root_names *nt = malloc(ntsz);
+  if (!nt) {
+    free(rt);
+    return 0;
+  }
   struct root_tmp *r = rt;
+  struct tactless_root_names *n = nt;
   for (const byte *c = s; c != end;) {
     size_t num_records = uint32le(c);
     uint32_t flags = uint32le(c + 4);
     uint32_t locale = uint32le(c + 8);
     int32_t fdid = -1;
     c += 12;
-    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r, ++n) {
       fdid = fdid + (int32_t)uint32le(c) + 1;
       r->fdid = fdid;
       r->locale = locale;
       r->flags = flags;
+      n->fdid = fdid;
     }
     r -= num_records;
-    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r) {
+    n -= num_records;
+    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r, ++n) {
       memcpy(r->ckey, c, 16);
+      memcpy(n->name, c + 16, 8);
     }
   }
-  return parse_root_tmp(rt, num_files, root);
+  return parse_root_tmp(rt, num_files, nt, num_files, root);
 }
 
 static int parse_root_mfst(const byte *s, size_t size,
@@ -1078,7 +1130,19 @@ static int parse_root_mfst(const byte *s, size_t size,
   if (!rt) {
     return 0;
   }
+  size_t ntsz = named_file_count * sizeof(struct tactless_root_names);
+  if (ntsz == 0 || ntsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    free(rt);
+    return 0;
+  }
+  struct tactless_root_names *nt = malloc(ntsz);
+  if (!nt) {
+    free(rt);
+    return 0;
+  }
   struct root_tmp *r = rt;
+  struct tactless_root_names *n = nt;
   for (const byte *c = s; c != end;) {
     size_t num_records = uint32le(c);
     uint32_t flags, locale;
@@ -1102,10 +1166,15 @@ static int parse_root_mfst(const byte *s, size_t size,
       memcpy(r->ckey, c, 16);
     }
     if (!(flags & 0x10000000)) {
-      c += 8 * num_records;
+      r -= num_records;
+      for (const byte *e = c + 8 * num_records; c != e; c += 8, ++r, ++n) {
+        /* NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Assign) */
+        n->fdid = r->fdid;
+        memcpy(n->name, c, 8);
+      }
     }
   }
-  return parse_root_tmp(rt, total_file_count, root);
+  return parse_root_tmp(rt, total_file_count, nt, named_file_count, root);
 }
 
 int tactless_root_parse(const byte *s, size_t size,
