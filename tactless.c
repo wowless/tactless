@@ -859,25 +859,101 @@ static const byte *ckey2ekey(const struct tactless_encoding *e,
   return p ? p + 16 : 0;
 }
 
+struct root_tmp {
+  int32_t fdid;
+  uint32_t locale;
+  uint32_t flags;
+  byte ckey[16];
+};
+
+int root_tmp_sort_cmp(const void *a, const void *b) {
+  const struct root_tmp *aa = a;
+  const struct root_tmp *bb = b;
+  return aa->fdid - bb->fdid;
+}
+
+static int parse_root_tmp(struct root_tmp *rt, size_t n,
+                          struct tactless_root *root) {
+  qsort(rt, n, sizeof(*rt), root_tmp_sort_cmp);
+  const struct root_tmp *re = rt + n;
+  size_t nf = 1;
+  int32_t fdid = rt->fdid;
+  for (const struct root_tmp *r = rt + 1; r != re; ++r) {
+    if (r->fdid != fdid) {
+      ++nf;
+      fdid = r->fdid;
+    }
+  }
+  struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
+  if (!fdids) {
+    free(rt);
+    return 0;
+  }
+  const struct root_tmp *best = rt;
+  for (const struct root_tmp *r = rt + 1; r != re; ++r) {
+    if (r->fdid != best->fdid) {
+      fc->fdid = best->fdid;
+      memcpy(fc->ckey, best->ckey, 16);
+      ++fc;
+      best = r;
+    }
+    /* TODO pick something besides first */
+  }
+  fc->fdid = best->fdid;
+  memcpy(fc->ckey, best->ckey, 16);
+  free(rt);
+  root->num_fdids = nf;
+  root->fdids = fdids;
+  return 1;
+}
+
 static int parse_root_legacy(const byte *s, size_t size,
                              struct tactless_root *root) {
   const byte *end = s + size;
-  uint32_t num_files = 0;
-  while (s != end) {
-    if (end - s < 12) {
+  size_t num_files = 0;
+  for (const byte *c = s; c != end;) {
+    if (end - c < 12) {
       return 0;
     }
-    uint32_t num_records = uint32le(s);
+    size_t num_records = uint32le(c);
+    if (num_records == 0) {
+      return 0;
+    }
     size_t bsz = 12 + 28 * num_records;
-    if (end - s < bsz) {
+    if (end - c < bsz) {
       return 0;
     }
-    s += bsz;
+    c += bsz;
     num_files += num_records;
   }
-  root->total_file_count = num_files;
-  root->named_file_count = num_files;
-  return 1;
+  size_t rtsz = num_files * sizeof(struct root_tmp);
+  if (rtsz == 0 || rtsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    return 0;
+  }
+  struct root_tmp *rt = malloc(rtsz);
+  if (!rt) {
+    return 0;
+  }
+  struct root_tmp *r = rt;
+  for (const byte *c = s; c != end;) {
+    size_t num_records = uint32le(c);
+    uint32_t flags = uint32le(c + 4);
+    uint32_t locale = uint32le(c + 8);
+    int32_t fdid = -1;
+    c += 12;
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
+      fdid = fdid + (int32_t)uint32le(c) + 1;
+      r->fdid = fdid;
+      r->locale = locale;
+      r->flags = flags;
+    }
+    r -= num_records;
+    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r) {
+      memcpy(r->ckey, c, 16);
+    }
+  }
+  return parse_root_tmp(rt, num_files, root);
 }
 
 static int parse_root_mfst(const byte *s, size_t size,
@@ -899,29 +975,63 @@ static int parse_root_mfst(const byte *s, size_t size,
   s += 24;
   uint32_t total_files = 0;
   uint32_t named_files = 0;
-  while (s != end) {
-    if (end - s < bhsz) {
+  for (const byte *c = s; c != end;) {
+    if (end - c < bhsz) {
       return 0;
     }
-    uint32_t num_records = uint32le(s);
+    size_t num_records = uint32le(c);
     uint32_t flags = version == 1
-                         ? uint32le(s + 4)
-                         : (uint32le(s + 8) | uint32le(s + 12) | (s[16] << 17));
+                         ? uint32le(c + 4)
+                         : (uint32le(c + 8) | uint32le(c + 12) | (c[16] << 17));
     size_t rsz = 20 + ((flags & 0x10000000) ? 0 : 8);
     size_t bsz = bhsz + rsz * num_records;
-    if (end - s < bsz) {
+    if (end - c < bsz) {
       return 0;
     }
-    s += bsz;
+    c += bsz;
     total_files += num_records;
     named_files += (flags & 0x10000000) ? 0 : num_records;
   }
   if (total_files != total_file_count || named_files != named_file_count) {
     return 0;
   }
-  root->total_file_count = total_file_count;
-  root->named_file_count = named_file_count;
-  return 1;
+  size_t rtsz = total_file_count * sizeof(struct root_tmp);
+  if (rtsz == 0 || rtsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    return 0;
+  }
+  struct root_tmp *rt = malloc(rtsz);
+  if (!rt) {
+    return 0;
+  }
+  struct root_tmp *r = rt;
+  for (const byte *c = s; c != end;) {
+    size_t num_records = uint32le(c);
+    uint32_t flags, locale;
+    if (version == 1) {
+      flags = uint32le(c + 4);
+      locale = uint32le(c + 8);
+    } else {
+      locale = uint32le(c + 4);
+      flags = uint32le(c + 8) | uint32le(c + 12) | (c[16] << 17);
+    }
+    c += bhsz;
+    int32_t fdid = -1;
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
+      fdid = fdid + (int32_t)uint32le(c) + 1;
+      r->fdid = fdid;
+      r->locale = locale;
+      r->flags = flags;
+    }
+    r -= num_records;
+    for (const byte *e = c + 16 * num_records; c != e; c += 16, ++r) {
+      memcpy(r->ckey, c, 16);
+    }
+    if (!(flags & 0x10000000)) {
+      c += 8 * num_records;
+    }
+  }
+  return parse_root_tmp(rt, total_file_count, root);
 }
 
 int tactless_root_parse(const byte *s, size_t size,
@@ -937,11 +1047,15 @@ int tactless_root_parse(const byte *s, size_t size,
 }
 
 void tactless_root_dump(const struct tactless_root *root) {
-  printf("total file count = %d\n", root->total_file_count);
-  printf("named file count = %d\n", root->named_file_count);
+  printf("num fdids = %zu\n", root->num_fdids);
+  for (size_t i = 0; i < root->num_fdids; ++i) {
+    char hex[33];
+    hash2hex(root->fdids[i].ckey, hex);
+    printf("%10d %s\n", root->fdids[i].fdid, hex);
+  }
 }
 
-void tactless_root_free(struct tactless_root *root) {}
+void tactless_root_free(struct tactless_root *root) { free(root->fdids); }
 
 static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
                          const byte *ekey, struct tactless_root *root) {
@@ -1057,8 +1171,7 @@ void tactless_dump(const struct tactless *t) {
     hash2hex(root_ekey, hex);
     printf("root ekey = %s\n", hex);
   }
-  printf("root total file count = %d\n", t->root.total_file_count);
-  printf("root named file count = %d\n", t->root.named_file_count);
+  printf("root num fdids = %zu\n", t->root.num_fdids);
   printf("archive index entries = %zu\n", t->archives_index.n);
 }
 
@@ -1066,6 +1179,7 @@ void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   tactless_encoding_free(&t->encoding);
   free(t->archives_index.data);
+  tactless_root_free(&t->root);
   curl_easy_cleanup(t->curl);
   free(t);
 }
