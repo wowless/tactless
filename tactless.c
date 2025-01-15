@@ -928,10 +928,24 @@ static int parse_root_legacy(const byte *s, size_t size,
       fdid = r->fdid;
     }
   }
+  struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
+  const struct root_tmp *best = rt;
+  for (r = rt + 1; r != re; ++r) {
+    if (r->fdid != best->fdid) {
+      fc->fdid = best->fdid;
+      memcpy(fc->ckey, best->ckey, 16);
+      ++fc;
+      best = r;
+    }
+    /* TODO pick something besides first */
+  }
+  fc->fdid = best->fdid;
+  memcpy(fc->ckey, best->ckey, 16);
   free(rt);
   root->total_file_count = num_files;
   root->named_file_count = num_files;
   root->num_fdids = nf;
+  root->fdids = fdids;
   return 1;
 }
 
@@ -977,6 +991,7 @@ static int parse_root_mfst(const byte *s, size_t size,
   root->total_file_count = total_file_count;
   root->named_file_count = named_file_count;
   root->num_fdids = 0;
+  root->fdids = 0;
   return 1;
 }
 
@@ -996,9 +1011,14 @@ void tactless_root_dump(const struct tactless_root *root) {
   printf("total file count = %d\n", root->total_file_count);
   printf("named file count = %d\n", root->named_file_count);
   printf("num fdids = %zu\n", root->num_fdids);
+  for (size_t i = 0; i < root->num_fdids; ++i) {
+    char hex[33];
+    hash2hex(root->fdids[i].ckey, hex);
+    printf("%10d %s\n", root->fdids[i].fdid, hex);
+  }
 }
 
-void tactless_root_free(struct tactless_root *root) {}
+void tactless_root_free(struct tactless_root *root) { free(root->fdids); }
 
 static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
                          const byte *ekey, struct tactless_root *root) {
@@ -1124,6 +1144,7 @@ void tactless_close(struct tactless *t) {
   free(t->cdn_config.archives);
   tactless_encoding_free(&t->encoding);
   free(t->archives_index.data);
+  tactless_root_free(&t->root);
   curl_easy_cleanup(t->curl);
   free(t);
 }

@@ -2,6 +2,7 @@
 #define TACTLESS_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 struct tactless;
 typedef struct tactless tactless;
@@ -10,10 +11,16 @@ tactless *tactless_open(const char *product);
 void tactless_close(tactless *t);
 void tactless_dump(const tactless *t);
 
+struct tactless_root_fdids {
+  int32_t fdid;
+  unsigned char ckey[16];
+};
+
 struct tactless_root {
   unsigned int total_file_count;
   unsigned int named_file_count;
   size_t num_fdids;
+  struct tactless_root_fdids *fdids;
 };
 
 int tactless_root_parse(const unsigned char *s, size_t n,
