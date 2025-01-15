@@ -674,7 +674,7 @@ static int download_archives_index_multi(const struct cdns *cdns,
     int rem;
     CURLMsg *msg = curl_multi_info_read(multi, &rem);
     if (msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK ||
-        rem != n - i - 1) {
+        rem != nf - i - 1) {
       return 0;
     }
   }
