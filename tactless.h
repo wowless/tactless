@@ -13,6 +13,7 @@ void tactless_dump(const tactless *t);
 struct tactless_root {
   unsigned int total_file_count;
   unsigned int named_file_count;
+  size_t num_fdids;
 };
 
 int tactless_root_parse(const unsigned char *s, size_t n,

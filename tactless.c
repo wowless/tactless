@@ -892,39 +892,47 @@ static int parse_root_legacy(const byte *s, size_t size,
     c += bsz;
     num_files += num_records;
   }
-  /* NOLINTNEXTLINE(clang-analyzer-optin.taint.TaintedAlloc) */
-  struct root_tmp *r = malloc(num_files * sizeof(*r));
-  if (!r) {
+  if (num_files == 0) {
     return 0;
   }
-  struct root_tmp *rc = r;
+  /* NOLINTNEXTLINE(clang-analyzer-optin.taint.TaintedAlloc) */
+  struct root_tmp *rt = malloc(num_files * sizeof(*rt));
+  if (!rt) {
+    return 0;
+  }
+  struct root_tmp *r = rt;
   for (const byte *c = s; c != end;) {
     size_t num_records = uint32le(c);
     uint32_t flags = uint32le(c + 4);
     uint32_t locale = uint32le(c + 8);
     int32_t fdid = -1;
     c += 12;
-    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++rc) {
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
       fdid = fdid + (int32_t)uint32le(c) + 1;
-      rc->fdid = fdid;
-      rc->locale = locale;
-      rc->flags = flags;
+      r->fdid = fdid;
+      r->locale = locale;
+      r->flags = flags;
     }
-    rc -= num_records;
-    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++rc) {
-      memcpy(rc->ckey, c, 16);
-      memcpy(rc->name, c + 16, 8);
+    r -= num_records;
+    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r) {
+      memcpy(r->ckey, c, 16);
+      memcpy(r->name, c + 16, 8);
     }
   }
-  qsort(r, num_files, sizeof(*r), root_tmp_sort_cmp);
-  for (const struct root_tmp *rr = r; rr != rc; ++rr) {
-    char hex[33];
-    hash2hex(rr->ckey, hex);
-    printf("%10u %10u %10u %s\n", rr->fdid, rr->flags, rr->locale, hex);
+  qsort(rt, num_files, sizeof(*rt), root_tmp_sort_cmp);
+  const struct root_tmp *re = rt + num_files;
+  size_t nf = 1;
+  int32_t fdid = rt->fdid;
+  for (r = rt + 1; r != re; ++r) {
+    if (r->fdid != fdid) {
+      ++nf;
+      fdid = r->fdid;
+    }
   }
-  free(r);
+  free(rt);
   root->total_file_count = num_files;
   root->named_file_count = num_files;
+  root->num_fdids = nf;
   return 1;
 }
 
@@ -969,6 +977,7 @@ static int parse_root_mfst(const byte *s, size_t size,
   }
   root->total_file_count = total_file_count;
   root->named_file_count = named_file_count;
+  root->num_fdids = 0;
   return 1;
 }
 
@@ -987,6 +996,7 @@ int tactless_root_parse(const byte *s, size_t size,
 void tactless_root_dump(const struct tactless_root *root) {
   printf("total file count = %d\n", root->total_file_count);
   printf("named file count = %d\n", root->named_file_count);
+  printf("num fdids = %zu\n", root->num_fdids);
 }
 
 void tactless_root_free(struct tactless_root *root) {}
