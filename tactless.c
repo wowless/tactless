@@ -966,20 +966,20 @@ static int parse_root_mfst(const byte *s, size_t size,
   s += 24;
   uint32_t total_files = 0;
   uint32_t named_files = 0;
-  while (s != end) {
-    if (end - s < bhsz) {
+  for (const byte *c = s; c != end;) {
+    if (end - c < bhsz) {
       return 0;
     }
-    uint32_t num_records = uint32le(s);
+    uint32_t num_records = uint32le(c);
     uint32_t flags = version == 1
-                         ? uint32le(s + 4)
-                         : (uint32le(s + 8) | uint32le(s + 12) | (s[16] << 17));
+                         ? uint32le(c + 4)
+                         : (uint32le(c + 8) | uint32le(c + 12) | (c[16] << 17));
     size_t rsz = 20 + ((flags & 0x10000000) ? 0 : 8);
     size_t bsz = bhsz + rsz * num_records;
-    if (end - s < bsz) {
+    if (end - c < bsz) {
       return 0;
     }
-    s += bsz;
+    c += bsz;
     total_files += num_records;
     named_files += (flags & 0x10000000) ? 0 : num_records;
   }
