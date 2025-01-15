@@ -970,7 +970,7 @@ static int parse_root_mfst(const byte *s, size_t size,
     if (end - c < bhsz) {
       return 0;
     }
-    uint32_t num_records = uint32le(c);
+    size_t num_records = uint32le(c);
     uint32_t flags = version == 1
                          ? uint32le(c + 4)
                          : (uint32le(c + 8) | uint32le(c + 12) | (c[16] << 17));
@@ -986,6 +986,43 @@ static int parse_root_mfst(const byte *s, size_t size,
   if (total_files != total_file_count || named_files != named_file_count) {
     return 0;
   }
+  size_t rtsz = total_file_count * sizeof(struct root_tmp);
+  if (rtsz == 0 || rtsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    return 0;
+  }
+  struct root_tmp *rt = malloc(rtsz);
+  if (!rt) {
+    return 0;
+  }
+  struct root_tmp *r = rt;
+  for (const byte *c = s; c != end;) {
+    size_t num_records = uint32le(c);
+    uint32_t flags, locale;
+    if (version == 1) {
+      flags = uint32le(c + 4);
+      locale = uint32le(c + 8);
+    } else {
+      locale = uint32le(c + 4);
+      flags = uint32le(c + 8) | uint32le(c + 12) | (c[16] << 17);
+    }
+    c += bhsz;
+    int32_t fdid = -1;
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
+      fdid = fdid + (int32_t)uint32le(c) + 1;
+      r->fdid = fdid;
+      r->locale = locale;
+      r->flags = flags;
+    }
+    r -= num_records;
+    for (const byte *e = c + 16 * num_records; c != e; c += 16, ++r) {
+      memcpy(r->ckey, c, 16);
+    }
+    if (!(flags & 0x10000000)) {
+      c += 8 * num_records;
+    }
+  }
+  free(rt);
   root->num_fdids = 0;
   root->fdids = 0;
   return 1;
