@@ -17,8 +17,6 @@ struct tactless_root_fdids {
 };
 
 struct tactless_root {
-  unsigned int total_file_count;
-  unsigned int named_file_count;
   size_t num_fdids;
   struct tactless_root_fdids *fdids;
 };

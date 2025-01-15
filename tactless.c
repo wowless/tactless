@@ -942,8 +942,6 @@ static int parse_root_legacy(const byte *s, size_t size,
   fc->fdid = best->fdid;
   memcpy(fc->ckey, best->ckey, 16);
   free(rt);
-  root->total_file_count = num_files;
-  root->named_file_count = num_files;
   root->num_fdids = nf;
   root->fdids = fdids;
   return 1;
@@ -988,8 +986,6 @@ static int parse_root_mfst(const byte *s, size_t size,
   if (total_files != total_file_count || named_files != named_file_count) {
     return 0;
   }
-  root->total_file_count = total_file_count;
-  root->named_file_count = named_file_count;
   root->num_fdids = 0;
   root->fdids = 0;
   return 1;
@@ -1008,8 +1004,6 @@ int tactless_root_parse(const byte *s, size_t size,
 }
 
 void tactless_root_dump(const struct tactless_root *root) {
-  printf("total file count = %d\n", root->total_file_count);
-  printf("named file count = %d\n", root->named_file_count);
   printf("num fdids = %zu\n", root->num_fdids);
   for (size_t i = 0; i < root->num_fdids; ++i) {
     char hex[33];
@@ -1134,8 +1128,6 @@ void tactless_dump(const struct tactless *t) {
     hash2hex(root_ekey, hex);
     printf("root ekey = %s\n", hex);
   }
-  printf("root total file count = %d\n", t->root.total_file_count);
-  printf("root named file count = %d\n", t->root.named_file_count);
   printf("root num fdids = %zu\n", t->root.num_fdids);
   printf("archive index entries = %zu\n", t->archives_index.n);
 }
