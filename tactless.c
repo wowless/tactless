@@ -1118,6 +1118,7 @@ void tactless_dump(const struct tactless *t) {
   }
   printf("root total file count = %d\n", t->root.total_file_count);
   printf("root named file count = %d\n", t->root.named_file_count);
+  printf("root num fdids = %zu\n", t->root.num_fdids);
   printf("archive index entries = %zu\n", t->archives_index.n);
 }
 
