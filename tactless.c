@@ -864,7 +864,6 @@ struct root_tmp {
   uint32_t locale;
   uint32_t flags;
   byte ckey[16];
-  byte name[8];
 };
 
 int root_tmp_sort_cmp(const void *a, const void *b) {
@@ -917,7 +916,6 @@ static int parse_root_legacy(const byte *s, size_t size,
     r -= num_records;
     for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r) {
       memcpy(r->ckey, c, 16);
-      memcpy(r->name, c + 16, 8);
     }
   }
   qsort(rt, num_files, sizeof(*rt), root_tmp_sort_cmp);
