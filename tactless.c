@@ -859,6 +859,18 @@ static const byte *ckey2ekey(const struct tactless_encoding *e,
   return p ? p + 16 : 0;
 }
 
+static int fdids_cmp(const void *key, const void *mem) {
+  const int32_t *k = key;
+  const struct tactless_root_fdids *m = mem;
+  return *k - m->fdid;
+}
+
+static const byte *fdid2ckey(const struct tactless_root *r, int32_t fdid) {
+  const struct tactless_root_fdids *p =
+      bsearch(&fdid, r->fdids, r->num_fdids, sizeof(*r->fdids), fdids_cmp);
+  return p ? p->ckey : 0;
+}
+
 struct root_tmp {
   int32_t fdid;
   uint32_t locale;
@@ -1172,6 +1184,16 @@ void tactless_dump(const struct tactless *t) {
     printf("root ekey = %s\n", hex);
   }
   printf("root num fdids = %zu\n", t->root.num_fdids);
+  const byte *db2_ckey = fdid2ckey(&t->root, 1267335);
+  if (db2_ckey) {
+    hash2hex(db2_ckey, hex);
+    printf("ManifestInterfaceTOCData.db2 ckey = %s\n", hex);
+    const byte *db2_ekey = ckey2ekey(&t->encoding, db2_ckey);
+    if (db2_ekey) {
+      hash2hex(db2_ekey, hex);
+      printf("ManifestInterfaceTOCData.db2 ekey = %s\n", hex);
+    }
+  }
   printf("archive index entries = %zu\n", t->archives_index.n);
 }
 
