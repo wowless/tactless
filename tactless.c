@@ -610,18 +610,18 @@ struct archives_index {
   size_t n;
 };
 
-static void archives_index_dump(const struct archives_index *a) {
-  char hex1[33], hex2[33];
-  printf("num elements = %zu\n", a->n);
-  const byte *end = a->data + a->n * 40;
-  for (const byte *p = a->data; p < end; p += 40) {
-    hash2hex(p, hex1);
-    hash2hex(p + 16, hex2);
-    printf("%s %s %10u %10u\n", hex1, hex2, uint32be(p + 32), uint32be(p + 36));
-  }
+static int archive_cmp(const void *key, const void *mem) {
+  return memcmp(key, mem, 16);
 }
 
-int archive_sort_cmp(const void *a, const void *b) { return memcmp(a, b, 40); }
+static unsigned char *ekey2ae(const struct archives_index *a,
+                              const byte *ekey) {
+  return bsearch(ekey, a->data, a->n, 40, archive_cmp);
+}
+
+static int archive_sort_cmp(const void *a, const void *b) {
+  return memcmp(a, b, 40);
+}
 
 static int download_archives_index_multi(const struct cdns *cdns,
                                          const struct cdn_config *cdn_config,
@@ -1192,6 +1192,14 @@ void tactless_dump(const struct tactless *t) {
     if (db2_ekey) {
       hash2hex(db2_ekey, hex);
       printf("ManifestInterfaceTOCData.db2 ekey = %s\n", hex);
+      const unsigned char *db2_ae = ekey2ae(&t->archives_index, db2_ekey);
+      if (db2_ae) {
+        hash2hex(db2_ae + 16, hex);
+        printf(
+            "ManifestInterfaceTOCData.db2 archive entry = %s size=%u "
+            "offset=%u\n",
+            hex, uint32be(db2_ae + 32), uint32be(db2_ae + 36));
+      }
     }
   }
   printf("archive index entries = %zu\n", t->archives_index.n);
