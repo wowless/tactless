@@ -872,6 +872,41 @@ int root_tmp_sort_cmp(const void *a, const void *b) {
   return aa->fdid - bb->fdid;
 }
 
+static int parse_root_tmp(struct root_tmp *rt, size_t n,
+                          struct tactless_root *root) {
+  qsort(rt, n, sizeof(*rt), root_tmp_sort_cmp);
+  const struct root_tmp *re = rt + n;
+  size_t nf = 1;
+  int32_t fdid = rt->fdid;
+  for (const struct root_tmp *r = rt + 1; r != re; ++r) {
+    if (r->fdid != fdid) {
+      ++nf;
+      fdid = r->fdid;
+    }
+  }
+  struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
+  if (!fdids) {
+    free(rt);
+    return 0;
+  }
+  const struct root_tmp *best = rt;
+  for (const struct root_tmp *r = rt + 1; r != re; ++r) {
+    if (r->fdid != best->fdid) {
+      fc->fdid = best->fdid;
+      memcpy(fc->ckey, best->ckey, 16);
+      ++fc;
+      best = r;
+    }
+    /* TODO pick something besides first */
+  }
+  fc->fdid = best->fdid;
+  memcpy(fc->ckey, best->ckey, 16);
+  free(rt);
+  root->num_fdids = nf;
+  root->fdids = fdids;
+  return 1;
+}
+
 static int parse_root_legacy(const byte *s, size_t size,
                              struct tactless_root *root) {
   const byte *end = s + size;
@@ -918,33 +953,7 @@ static int parse_root_legacy(const byte *s, size_t size,
       memcpy(r->ckey, c, 16);
     }
   }
-  qsort(rt, num_files, sizeof(*rt), root_tmp_sort_cmp);
-  const struct root_tmp *re = rt + num_files;
-  size_t nf = 1;
-  int32_t fdid = rt->fdid;
-  for (r = rt + 1; r != re; ++r) {
-    if (r->fdid != fdid) {
-      ++nf;
-      fdid = r->fdid;
-    }
-  }
-  struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
-  const struct root_tmp *best = rt;
-  for (r = rt + 1; r != re; ++r) {
-    if (r->fdid != best->fdid) {
-      fc->fdid = best->fdid;
-      memcpy(fc->ckey, best->ckey, 16);
-      ++fc;
-      best = r;
-    }
-    /* TODO pick something besides first */
-  }
-  fc->fdid = best->fdid;
-  memcpy(fc->ckey, best->ckey, 16);
-  free(rt);
-  root->num_fdids = nf;
-  root->fdids = fdids;
-  return 1;
+  return parse_root_tmp(rt, num_files, root);
 }
 
 static int parse_root_mfst(const byte *s, size_t size,
@@ -1022,10 +1031,7 @@ static int parse_root_mfst(const byte *s, size_t size,
       c += 8 * num_records;
     }
   }
-  free(rt);
-  root->num_fdids = 0;
-  root->fdids = 0;
-  return 1;
+  return parse_root_tmp(rt, total_file_count, root);
 }
 
 int tactless_root_parse(const byte *s, size_t size,
