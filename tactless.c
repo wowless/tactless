@@ -254,7 +254,7 @@ static int md5check(const byte *s, size_t size, const byte *md5) {
 }
 
 static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
-                        size_t *out_size) {
+                        size_t *out_size, int *zeros) {
   if (size < 8) {
     return 0;
   }
@@ -307,11 +307,16 @@ static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
   }
   byte *cursor = out;
   data = s + header_size;
+  *zeros = 0;
   for (const byte *entry = s + 12; entry != s + header_size; entry += 24) {
     uint32_t compressed_size = uint32be(entry);
     uint32_t uncompressed_size = uint32be(entry + 4);
     uLongf zsize = uncompressed_size;
     switch (data[0]) {
+      case 'E':
+        memset(cursor, 0, uncompressed_size);
+        *zeros = 1;
+        break;
       case 'N':
         memcpy(cursor, data + 1, compressed_size - 1);
         break;
@@ -371,21 +376,24 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
+  int zeros = 0;
   if (ekey) {
-    byte *t = parse_blte(text, *size, ekey, size);
+    byte *t = parse_blte(text, *size, ekey, size, &zeros);
     free(text);
     if (!t) {
       return 0;
     }
     text = t;
   }
-  if (!md5check(text, *size, ckey)) {
-    free(text);
-    return 0;
-  }
-  if (!writeall(filename, text, *size)) {
-    free(text);
-    return 0;
+  if (!zeros) {
+    if (!md5check(text, *size, ckey)) {
+      free(text);
+      return 0;
+    }
+    if (!writeall(filename, text, *size)) {
+      free(text);
+      return 0;
+    }
   }
   return text;
 }
@@ -412,19 +420,22 @@ static byte *download_from_cdn_archive(CURL *curl, const struct cdns *cdns,
   if (!text) {
     return 0;
   }
-  byte *t = parse_blte(text, *size, ekey, size);
+  int zeros;
+  byte *t = parse_blte(text, *size, ekey, size, &zeros);
   free(text);
   if (!t) {
     return 0;
   }
   text = t;
-  if (!md5check(text, *size, ckey)) {
-    free(text);
-    return 0;
-  }
-  if (!writeall(filename, text, *size)) {
-    free(text);
-    return 0;
+  if (!zeros) {
+    if (!md5check(text, *size, ckey)) {
+      free(text);
+      return 0;
+    }
+    if (!writeall(filename, text, *size)) {
+      free(text);
+      return 0;
+    }
   }
   return text;
 }
