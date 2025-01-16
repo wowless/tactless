@@ -1103,8 +1103,10 @@ static int parse_root_tmp(struct root_tmp *rt, size_t nr,
       memcpy(fc->ckey, best->ckey, 16);
       ++fc;
       best = r;
+    } else if (!(best->locale & 0x2) && (r->locale & 0x2)) {
+      best = r;
     }
-    /* TODO pick something besides first */
+    /* TODO pick something besides first (US) */
   }
   fc->fdid = best->fdid;
   memcpy(fc->ckey, best->ckey, 16);
