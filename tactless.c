@@ -1,5 +1,6 @@
 #include "tactless.h"
 
+#include <ctype.h>
 #include <curl/curl.h>
 #include <openssl/md5.h>
 #include <stdlib.h>
@@ -931,6 +932,121 @@ static const byte *fdid2ckey(const struct tactless_root *r, int32_t fdid) {
   return p ? p->ckey : 0;
 }
 
+static int names_cmp(const void *key, const void *mem) {
+  const unsigned char *k = key;
+  const struct tactless_root_names *m = mem;
+  return memcmp(k, m->name, 8);
+}
+
+/* This is adapted from https://www.burtleburtle.net/bob/c/lookup3.c */
+static void hashlittle2(const void *key, size_t length, uint32_t *pc,
+                        uint32_t *pb) {
+#define rot(x, k) (((x) << (k)) | ((x) >> (32 - (k))))
+  uint32_t a, b, c;
+  a = b = c = 0xdeadbeef + ((uint32_t)length) + *pc;
+  c += *pb;
+  const uint8_t *k = (const uint8_t *)key;
+  while (length > 12) {
+    a += k[0];
+    a += ((uint32_t)k[1]) << 8;
+    a += ((uint32_t)k[2]) << 16;
+    a += ((uint32_t)k[3]) << 24;
+    b += k[4];
+    b += ((uint32_t)k[5]) << 8;
+    b += ((uint32_t)k[6]) << 16;
+    b += ((uint32_t)k[7]) << 24;
+    c += k[8];
+    c += ((uint32_t)k[9]) << 8;
+    c += ((uint32_t)k[10]) << 16;
+    c += ((uint32_t)k[11]) << 24;
+    a -= c;
+    a ^= rot(c, 4);
+    c += b;
+    b -= a;
+    b ^= rot(a, 6);
+    a += c;
+    c -= b;
+    c ^= rot(b, 8);
+    b += a;
+    a -= c;
+    a ^= rot(c, 16);
+    c += b;
+    b -= a;
+    b ^= rot(a, 19);
+    a += c;
+    c -= b;
+    c ^= rot(b, 4);
+    b += a;
+    length -= 12;
+    k += 12;
+  }
+  switch (length) {
+    case 12:
+      c += ((uint32_t)k[11]) << 24;
+    case 11:
+      c += ((uint32_t)k[10]) << 16;
+    case 10:
+      c += ((uint32_t)k[9]) << 8;
+    case 9:
+      c += k[8];
+    case 8:
+      b += ((uint32_t)k[7]) << 24;
+    case 7:
+      b += ((uint32_t)k[6]) << 16;
+    case 6:
+      b += ((uint32_t)k[5]) << 8;
+    case 5:
+      b += k[4];
+    case 4:
+      a += ((uint32_t)k[3]) << 24;
+    case 3:
+      a += ((uint32_t)k[2]) << 16;
+    case 2:
+      a += ((uint32_t)k[1]) << 8;
+    case 1:
+      a += k[0];
+      c ^= b;
+      c -= rot(b, 14);
+      a ^= c;
+      a -= rot(c, 11);
+      b ^= a;
+      b -= rot(a, 25);
+      c ^= b;
+      c -= rot(b, 16);
+      a ^= c;
+      a -= rot(c, 4);
+      b ^= a;
+      b -= rot(a, 14);
+      c ^= b;
+      c -= rot(b, 24);
+    default:
+      break;
+  }
+  *pc = c;
+  *pb = b;
+#undef rot
+}
+
+static int name2fdid(const struct tactless_root *r, const char *name,
+                     int32_t *fdid) {
+  char buf[256], *c = buf;
+  for (; *name && c != buf + sizeof(buf); ++c, ++name) {
+    *c = (char)(*name == '/' ? '\\' : toupper(*name));
+  }
+  uint32_t pc = 0, pb = 0;
+  hashlittle2(buf, c - buf, &pc, &pb);
+  unsigned char hash[8];
+  memcpy(hash, &pb, 4);
+  memcpy(hash + 4, &pc, 4);
+  const struct tactless_root_names *p =
+      bsearch(hash, r->names, r->num_names, sizeof(*r->names), names_cmp);
+  if (!p) {
+    return 0;
+  }
+  *fdid = p->fdid;
+  return 1;
+}
+
 struct root_tmp {
   int32_t fdid;
   uint32_t locale;
@@ -938,16 +1054,23 @@ struct root_tmp {
   byte ckey[16];
 };
 
-int root_tmp_sort_cmp(const void *a, const void *b) {
+static int root_tmp_sort_cmp(const void *a, const void *b) {
   const struct root_tmp *aa = a;
   const struct root_tmp *bb = b;
   return aa->fdid - bb->fdid;
 }
 
-static int parse_root_tmp(struct root_tmp *rt, size_t n,
+static int names_sort_cmp(const void *a, const void *b) {
+  const struct tactless_root_names *aa = a;
+  const struct tactless_root_names *bb = b;
+  return memcmp(aa->name, bb->name, 8);
+}
+
+static int parse_root_tmp(struct root_tmp *rt, size_t nr,
+                          struct tactless_root_names *nt, size_t nn,
                           struct tactless_root *root) {
-  qsort(rt, n, sizeof(*rt), root_tmp_sort_cmp);
-  const struct root_tmp *re = rt + n;
+  qsort(rt, nr, sizeof(*rt), root_tmp_sort_cmp);
+  const struct root_tmp *re = rt + nr;
   size_t nf = 1;
   int32_t fdid = rt->fdid;
   for (const struct root_tmp *r = rt + 1; r != re; ++r) {
@@ -959,6 +1082,7 @@ static int parse_root_tmp(struct root_tmp *rt, size_t n,
   struct tactless_root_fdids *fdids = malloc(nf * sizeof(*fdids)), *fc = fdids;
   if (!fdids) {
     free(rt);
+    free(nt);
     return 0;
   }
   const struct root_tmp *best = rt;
@@ -976,6 +1100,37 @@ static int parse_root_tmp(struct root_tmp *rt, size_t n,
   free(rt);
   root->num_fdids = nf;
   root->fdids = fdids;
+  qsort(nt, nn, sizeof(*nt), names_sort_cmp);
+  const struct tactless_root_names *ne = nt + nn;
+  size_t nh = 1;
+  const byte *last = nt->name;
+  for (const struct tactless_root_names *n = nt + 1; n != ne; ++n) {
+    if (memcmp(last, n->name, 8) != 0) {
+      ++nh;
+      last = n->name;
+    }
+  }
+  struct tactless_root_names *names = malloc(nh * sizeof(*names)), *nc = names;
+  if (!names) {
+    free(fdids);
+    free(nt);
+    return 0;
+  }
+  const struct tactless_root_names *besth = nt;
+  for (const struct tactless_root_names *n = nt + 1; n != ne; ++n) {
+    if (memcmp(besth->name, n->name, 8) != 0) {
+      memcpy(nc->name, besth->name, 8);
+      nc->fdid = besth->fdid;
+      ++nc;
+      besth = n;
+    }
+    /* TODO validate uniqueness or do scoring */
+  }
+  memcpy(nc->name, besth->name, 8);
+  nc->fdid = besth->fdid;
+  free(nt);
+  root->num_names = nh;
+  root->names = names;
   return 1;
 }
 
@@ -1007,25 +1162,40 @@ static int parse_root_legacy(const byte *s, size_t size,
   if (!rt) {
     return 0;
   }
+  size_t ntsz = num_files * sizeof(struct tactless_root_names);
+  if (ntsz == 0 || ntsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    free(rt);
+    return 0;
+  }
+  struct tactless_root_names *nt = malloc(ntsz);
+  if (!nt) {
+    free(rt);
+    return 0;
+  }
   struct root_tmp *r = rt;
+  struct tactless_root_names *n = nt;
   for (const byte *c = s; c != end;) {
     size_t num_records = uint32le(c);
     uint32_t flags = uint32le(c + 4);
     uint32_t locale = uint32le(c + 8);
     int32_t fdid = -1;
     c += 12;
-    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r) {
+    for (const byte *fe = c + 4 * num_records; c != fe; c += 4, ++r, ++n) {
       fdid = fdid + (int32_t)uint32le(c) + 1;
       r->fdid = fdid;
       r->locale = locale;
       r->flags = flags;
+      n->fdid = fdid;
     }
     r -= num_records;
-    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r) {
+    n -= num_records;
+    for (const byte *e = c + 24 * num_records; c != e; c += 24, ++r, ++n) {
       memcpy(r->ckey, c, 16);
+      memcpy(n->name, c + 16, 8);
     }
   }
-  return parse_root_tmp(rt, num_files, root);
+  return parse_root_tmp(rt, num_files, nt, num_files, root);
 }
 
 static int parse_root_mfst(const byte *s, size_t size,
@@ -1076,7 +1246,19 @@ static int parse_root_mfst(const byte *s, size_t size,
   if (!rt) {
     return 0;
   }
+  size_t ntsz = named_file_count * sizeof(struct tactless_root_names);
+  if (ntsz == 0 || ntsz >= SIZE_MAX / 4) {
+    /* dodge a reasonable clang-tidy warning about huge allocations */
+    free(rt);
+    return 0;
+  }
+  struct tactless_root_names *nt = malloc(ntsz);
+  if (!nt) {
+    free(rt);
+    return 0;
+  }
   struct root_tmp *r = rt;
+  struct tactless_root_names *n = nt;
   for (const byte *c = s; c != end;) {
     size_t num_records = uint32le(c);
     uint32_t flags, locale;
@@ -1100,10 +1282,15 @@ static int parse_root_mfst(const byte *s, size_t size,
       memcpy(r->ckey, c, 16);
     }
     if (!(flags & 0x10000000)) {
-      c += 8 * num_records;
+      r -= num_records;
+      for (const byte *e = c + 8 * num_records; c != e; c += 8, ++r, ++n) {
+        /* NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Assign) */
+        n->fdid = r->fdid;
+        memcpy(n->name, c, 8);
+      }
     }
   }
-  return parse_root_tmp(rt, total_file_count, root);
+  return parse_root_tmp(rt, total_file_count, nt, named_file_count, root);
 }
 
 int tactless_root_parse(const byte *s, size_t size,
@@ -1125,9 +1312,21 @@ void tactless_root_dump(const struct tactless_root *root) {
     hash2hex(root->fdids[i].ckey, hex);
     printf("%10d %s\n", root->fdids[i].fdid, hex);
   }
+  printf("num names = %zu\n", root->num_names);
+  byte hash[16];
+  memset(hash, 0, 8);
+  for (size_t i = 0; i < root->num_names; ++i) {
+    memcpy(hash + 8, root->names[i].name, 8);
+    char hex[33];
+    hash2hex(hash, hex);
+    printf("%s %10d\n", hex + 16, root->names[i].fdid);
+  }
 }
 
-void tactless_root_free(struct tactless_root *root) { free(root->fdids); }
+void tactless_root_free(struct tactless_root *root) {
+  free(root->fdids);
+  free(root->names);
+}
 
 static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
                          const byte *ekey, struct tactless_root *root) {
@@ -1271,6 +1470,10 @@ void tactless_dump(const struct tactless *t) {
         }
       }
     }
+  }
+  int32_t blp_fdid;
+  if (name2fdid(&t->root, "Interface/Icons/Temp.blp", &blp_fdid)) {
+    printf("Interface/Icons/Temp.blp fdid = %d\n", blp_fdid);
   }
   printf("archive index entries = %zu\n", t->archives_index.n);
 }

@@ -16,9 +16,16 @@ struct tactless_root_fdids {
   unsigned char ckey[16];
 };
 
+struct tactless_root_names {
+  unsigned char name[8];
+  int32_t fdid;
+};
+
 struct tactless_root {
   size_t num_fdids;
   struct tactless_root_fdids *fdids;
+  size_t num_names;
+  struct tactless_root_names *names;
 };
 
 int tactless_root_parse(const unsigned char *s, size_t n,
