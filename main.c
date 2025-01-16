@@ -79,6 +79,23 @@ int main(int argc, char **argv) {
     tactless_close(t);
     return ret;
   }
+  if (argc == 4 && strcmp(argv[1], "name") == 0) {
+    tactless *t = tactless_open(argv[2]);
+    if (!t) {
+      fputs("error opening tactless\n", stderr);
+      return EXIT_FAILURE;
+    }
+    size_t size;
+    unsigned char *data = tactless_get_name(t, argv[3], &size);
+    if (!data) {
+      tactless_close(t);
+      return EXIT_FAILURE;
+    }
+    int ret =
+        fwrite(data, size, 1, stdout) == size ? EXIT_SUCCESS : EXIT_FAILURE;
+    tactless_close(t);
+    return ret;
+  }
   if (argc != 2) {
     fputs("usage: tactless product\n", stderr);
     return EXIT_FAILURE;

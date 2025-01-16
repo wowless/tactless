@@ -1425,6 +1425,15 @@ unsigned char *tactless_get_fdid(const tactless *t, int32_t fdid,
                                    ckey, ekey, size);
 }
 
+unsigned char *tactless_get_name(const tactless *t, const char *name,
+                                 size_t *size) {
+  int32_t fdid;
+  if (!name2fdid(&t->root, name, &fdid)) {
+    return 0;
+  }
+  return tactless_get_fdid(t, fdid, size);
+}
+
 void tactless_dump(const struct tactless *t) {
   char hex[33];
   printf("cdns host = %s\n", t->cdns.host);
