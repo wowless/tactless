@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
     return dump(argv[2], argv[3]) ? EXIT_SUCCESS : EXIT_FAILURE;
   }
   if (argc == 4 && strcmp(argv[1], "fdid") == 0) {
-    tactless *t = tactless_open(argv[2]);
+    tactless *t = tactless_open(argv[2], 0);
     if (!t) {
       fputs("error opening tactless\n", stderr);
       return EXIT_FAILURE;
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
     return ret;
   }
   if (argc == 4 && strcmp(argv[1], "name") == 0) {
-    tactless *t = tactless_open(argv[2]);
+    tactless *t = tactless_open(argv[2], 0);
     if (!t) {
       fputs("error opening tactless\n", stderr);
       return EXIT_FAILURE;
@@ -96,11 +96,15 @@ int main(int argc, char **argv) {
     tactless_close(t);
     return ret;
   }
-  if (argc != 2) {
+  if (argc != 2 && argc != 3) {
     fputs("usage: tactless product\n", stderr);
     return EXIT_FAILURE;
   }
-  tactless *t = tactless_open(argv[1]);
+  const char *build_config = 0;
+  if (argc == 3) {
+    build_config = argv[2];
+  }
+  tactless *t = tactless_open(argv[1], build_config);
   if (!t) {
     fputs("error opening tactless\n", stderr);
     return EXIT_FAILURE;

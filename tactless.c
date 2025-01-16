@@ -1362,7 +1362,8 @@ struct tactless {
   struct archives_index archives_index;
 };
 
-static int tactless_init(struct tactless *t, const char *product) {
+static int tactless_init(struct tactless *t, const char *product,
+                         const char *build_config) {
   CURL *curl = curl_easy_init();
   if (!curl) {
     return 0;
@@ -1372,6 +1373,10 @@ static int tactless_init(struct tactless *t, const char *product) {
     return 0;
   }
   if (!download_versions(curl, product, &t->versions)) {
+    return 0;
+  }
+  if (build_config &&
+      !parse_hash(build_config, '\0', t->versions.build_config)) {
     return 0;
   }
   if (!download_build_config(curl, &t->cdns, t->versions.build_config,
@@ -1403,12 +1408,12 @@ static int tactless_init(struct tactless *t, const char *product) {
   return 1;
 }
 
-struct tactless *tactless_open(const char *product) {
+struct tactless *tactless_open(const char *product, const char *build_config) {
   struct tactless *t = calloc(1, sizeof(*t));
   if (!t) {
     return NULL;
   }
-  if (!tactless_init(t, product)) {
+  if (!tactless_init(t, product, build_config)) {
     tactless_close(t);
     return NULL;
   }
