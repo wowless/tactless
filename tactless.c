@@ -1404,6 +1404,27 @@ struct tactless *tactless_open(const char *product) {
   return t;
 }
 
+unsigned char *tactless_get_fdid(const tactless *t, int32_t fdid,
+                                 size_t *size) {
+  const byte *ckey = fdid2ckey(&t->root, fdid);
+  if (!ckey) {
+    return 0;
+  }
+  const byte *ekey = ckey2ekey(&t->encoding, ckey);
+  if (!ekey) {
+    return 0;
+  }
+  const unsigned char *ae = ekey2ae(&t->archives_index, ekey);
+  if (!ae) {
+    return 0;
+  }
+  const byte *archive = ae + 16;
+  size_t asize = uint32be(ae + 32);
+  size_t aoffset = uint32be(ae + 36);
+  return download_from_cdn_archive(t->curl, &t->cdns, archive, asize, aoffset,
+                                   ckey, ekey, size);
+}
+
 void tactless_dump(const struct tactless *t) {
   char hex[33];
   printf("cdns host = %s\n", t->cdns.host);

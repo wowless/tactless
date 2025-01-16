@@ -8,6 +8,7 @@ struct tactless;
 typedef struct tactless tactless;
 
 tactless *tactless_open(const char *product);
+unsigned char *tactless_get_fdid(const tactless *t, int32_t fdid, size_t *size);
 void tactless_close(tactless *t);
 void tactless_dump(const tactless *t);
 
