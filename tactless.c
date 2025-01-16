@@ -1,5 +1,6 @@
 #include "tactless.h"
 
+#include <ctype.h>
 #include <curl/curl.h>
 #include <openssl/md5.h>
 #include <stdlib.h>
@@ -931,6 +932,121 @@ static const byte *fdid2ckey(const struct tactless_root *r, int32_t fdid) {
   return p ? p->ckey : 0;
 }
 
+static int names_cmp(const void *key, const void *mem) {
+  const unsigned char *k = key;
+  const struct tactless_root_names *m = mem;
+  return memcmp(k, m->name, 8);
+}
+
+/* This is adapted from https://www.burtleburtle.net/bob/c/lookup3.c */
+static void hashlittle2(const void *key, size_t length, uint32_t *pc,
+                        uint32_t *pb) {
+#define rot(x, k) (((x) << (k)) | ((x) >> (32 - (k))))
+  uint32_t a, b, c;
+  a = b = c = 0xdeadbeef + ((uint32_t)length) + *pc;
+  c += *pb;
+  const uint8_t *k = (const uint8_t *)key;
+  while (length > 12) {
+    a += k[0];
+    a += ((uint32_t)k[1]) << 8;
+    a += ((uint32_t)k[2]) << 16;
+    a += ((uint32_t)k[3]) << 24;
+    b += k[4];
+    b += ((uint32_t)k[5]) << 8;
+    b += ((uint32_t)k[6]) << 16;
+    b += ((uint32_t)k[7]) << 24;
+    c += k[8];
+    c += ((uint32_t)k[9]) << 8;
+    c += ((uint32_t)k[10]) << 16;
+    c += ((uint32_t)k[11]) << 24;
+    a -= c;
+    a ^= rot(c, 4);
+    c += b;
+    b -= a;
+    b ^= rot(a, 6);
+    a += c;
+    c -= b;
+    c ^= rot(b, 8);
+    b += a;
+    a -= c;
+    a ^= rot(c, 16);
+    c += b;
+    b -= a;
+    b ^= rot(a, 19);
+    a += c;
+    c -= b;
+    c ^= rot(b, 4);
+    b += a;
+    length -= 12;
+    k += 12;
+  }
+  switch (length) {
+    case 12:
+      c += ((uint32_t)k[11]) << 24;
+    case 11:
+      c += ((uint32_t)k[10]) << 16;
+    case 10:
+      c += ((uint32_t)k[9]) << 8;
+    case 9:
+      c += k[8];
+    case 8:
+      b += ((uint32_t)k[7]) << 24;
+    case 7:
+      b += ((uint32_t)k[6]) << 16;
+    case 6:
+      b += ((uint32_t)k[5]) << 8;
+    case 5:
+      b += k[4];
+    case 4:
+      a += ((uint32_t)k[3]) << 24;
+    case 3:
+      a += ((uint32_t)k[2]) << 16;
+    case 2:
+      a += ((uint32_t)k[1]) << 8;
+    case 1:
+      a += k[0];
+      c ^= b;
+      c -= rot(b, 14);
+      a ^= c;
+      a -= rot(c, 11);
+      b ^= a;
+      b -= rot(a, 25);
+      c ^= b;
+      c -= rot(b, 16);
+      a ^= c;
+      a -= rot(c, 4);
+      b ^= a;
+      b -= rot(a, 14);
+      c ^= b;
+      c -= rot(b, 24);
+    default:
+      break;
+  }
+  *pc = c;
+  *pb = b;
+#undef rot
+}
+
+static int name2fdid(const struct tactless_root *r, const char *name,
+                     int32_t *fdid) {
+  char buf[256], *c = buf;
+  for (; *name && c != buf + sizeof(buf); ++c, ++name) {
+    *c = (char)(*name == '/' ? '\\' : toupper(*name));
+  }
+  uint32_t pc = 0, pb = 0;
+  hashlittle2(buf, c - buf, &pc, &pb);
+  unsigned char hash[8];
+  memcpy(hash, &pb, 4);
+  memcpy(hash + 4, &pc, 4);
+  const struct tactless_root_names *p =
+      bsearch(hash, r->names, r->num_names, sizeof(*r->names), names_cmp);
+  if (!p) {
+    return 0;
+  }
+  *fdid = p->fdid;
+  return 1;
+}
+
 struct root_tmp {
   int32_t fdid;
   uint32_t locale;
@@ -1354,6 +1470,10 @@ void tactless_dump(const struct tactless *t) {
         }
       }
     }
+  }
+  int32_t blp_fdid;
+  if (name2fdid(&t->root, "Interface/Icons/Temp.blp", &blp_fdid)) {
+    printf("Interface/Icons/Temp.blp fdid = %d\n", blp_fdid);
   }
   printf("archive index entries = %zu\n", t->archives_index.n);
 }
