@@ -96,6 +96,14 @@ int main(int argc, char **argv) {
     tactless_close(t);
     return ret;
   }
+  if (argc == 3 && strcmp(argv[1], "build") == 0) {
+    char build[33];
+    if (!tactless_current_build(argv[2], build)) {
+      return EXIT_FAILURE;
+    }
+    puts(build);
+    return EXIT_SUCCESS;
+  }
   if (argc != 2 && argc != 3) {
     fputs("usage: tactless product\n", stderr);
     return EXIT_FAILURE;

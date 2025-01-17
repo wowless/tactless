@@ -1534,3 +1534,19 @@ void tactless_close(struct tactless *t) {
   curl_easy_cleanup(t->curl);
   free(t);
 }
+
+int tactless_current_build(const char *product, char *hash) {
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    return 0;
+  }
+  struct versions versions;
+  memset(&versions, 0, sizeof(versions)); /* clang-tidy is cranky otherwise */
+  int ret = download_versions(curl, product, &versions);
+  curl_easy_cleanup(curl);
+  if (!ret) {
+    return 0;
+  }
+  hash2hex(versions.build_config, hash);
+  return 1;
+}

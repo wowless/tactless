@@ -14,6 +14,8 @@ unsigned char *tactless_get_name(const tactless *t, const char *name,
 void tactless_close(tactless *t);
 void tactless_dump(const tactless *t);
 
+int tactless_current_build(const char *product, char *hash);
+
 struct tactless_root_fdids {
   int32_t fdid;
   unsigned char ckey[16];
