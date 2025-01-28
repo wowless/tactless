@@ -119,11 +119,12 @@ static int build(int argc, char **argv) {
     fputs("usage: tactless build $product\n", stderr);
     return 0;
   }
-  char build[33];
-  if (!tactless_current_build(argv[0], build)) {
+  char hash[33];
+  int major, minor, patch, build;
+  if (!tactless_current_build(argv[0], hash, &major, &minor, &patch, &build)) {
     return 0;
   }
-  puts(build);
+  printf("%s %d %d %d %d\n", hash, major, minor, patch, build);
   return 1;
 }
 

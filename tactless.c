@@ -151,6 +151,10 @@ static int parse_hash(const char *s, char delim, byte *hash) {
 struct versions {
   byte build_config[16];
   byte cdn_config[16];
+  int major;
+  int minor;
+  int patch;
+  int build;
 };
 
 static int parse_versions(const char *s, struct versions *versions) {
@@ -164,6 +168,18 @@ static int parse_versions(const char *s, struct versions *versions) {
   if (!parse_hash(s + 37, '|', versions->cdn_config)) {
     return 0;
   }
+  s = strchr(s + 103, '|');
+  if (!s) {
+    return 0;
+  }
+  int a, b, c, d;
+  if (sscanf(s, "|%d.%d.%d.%d|", &a, &b, &c, &d) != 4) {
+    return 0;
+  }
+  versions->major = a;
+  versions->minor = b;
+  versions->patch = c;
+  versions->build = d;
   return 1;
 }
 
@@ -1535,7 +1551,8 @@ void tactless_close(struct tactless *t) {
   free(t);
 }
 
-int tactless_current_build(const char *product, char *hash) {
+int tactless_current_build(const char *product, char *hash, int *major,
+                           int *minor, int *patch, int *build) {
   CURL *curl = curl_easy_init();
   if (!curl) {
     return 0;
@@ -1548,5 +1565,9 @@ int tactless_current_build(const char *product, char *hash) {
     return 0;
   }
   hash2hex(versions.build_config, hash);
+  *major = versions.major;
+  *minor = versions.minor;
+  *patch = versions.patch;
+  *build = versions.build;
   return 1;
 }
