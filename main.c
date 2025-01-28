@@ -122,6 +122,7 @@ static int build(int argc, char **argv) {
   char hash[33];
   int major, minor, patch, build;
   if (!tactless_current_build(argv[0], hash, &major, &minor, &patch, &build)) {
+    fputs("error getting current build\n", stderr);
     return 0;
   }
   printf("%s %d %d %d %d\n", hash, major, minor, patch, build);

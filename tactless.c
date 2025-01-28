@@ -168,7 +168,11 @@ static int parse_versions(const char *s, struct versions *versions) {
   if (!parse_hash(s + 37, '|', versions->cdn_config)) {
     return 0;
   }
-  s = strchr(s + 103, '|');
+  s = strchr(s + 70, '|');
+  if (!s) {
+    return 0;
+  }
+  s = strchr(s + 1, '|');
   if (!s) {
     return 0;
   }
