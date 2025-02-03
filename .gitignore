@@ -1,4 +1,5 @@
 /build/
 /cache/
+/tactless.o
 /.build-pre-commit/
 /.vscode/
