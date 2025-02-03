@@ -29,7 +29,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: true
-    - uses: seanmiddleditch/gha-setup-ninja@v5
+    - uses: seanmiddleditch/gha-setup-ninja@v6
     - uses: pre-commit/action@v3.0.1
       env:
         pythonLocation: ${{ matrix.os }}
