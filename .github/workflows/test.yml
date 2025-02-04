@@ -30,6 +30,7 @@ jobs:
       with:
         submodules: true
     - uses: seanmiddleditch/gha-setup-ninja@v6
+    - uses: lukka/run-vcpkg@v11
     - uses: pre-commit/action@v3.0.1
       env:
         pythonLocation: ${{ matrix.os }}
