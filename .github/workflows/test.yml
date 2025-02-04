@@ -30,9 +30,11 @@ jobs:
       with:
         submodules: true
     - uses: seanmiddleditch/gha-setup-ninja@v6
-    - uses: lukka/run-vcpkg@v11
-    - uses: pre-commit/action@v3.0.1
-      env:
-        pythonLocation: ${{ matrix.os }}
-    - run: cmake -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+    - run: vcpkg integrate install
+#    - uses: pre-commit/action@v3.0.1
+#      env:
+#        pythonLocation: ${{ matrix.os }}
+    - run: cmake -B build \
+             -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+             -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_INSTALLATION_ROOT }}scripts/buildsystems/vcpkg.cmake"
     - run: cmake --build build --verbose
