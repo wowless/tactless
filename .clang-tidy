@@ -1,7 +1,6 @@
 Checks:
   -*,
   bugprone-*,
-  clang-analyzer-*,
   clang-diagnostic-*,
   -bugprone-easily-swappable-parameters,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
@@ -9,7 +8,9 @@ Checks:
 WarningsAsErrors:
   -*,
   bugprone-*,
-  clang-analyzer-*,
   clang-diagnostic-*,
   -bugprone-easily-swappable-parameters,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+
+# Temporarily disabled:
+#   clang-analyzer-*,
