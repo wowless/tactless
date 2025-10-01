@@ -6,7 +6,7 @@ on:
     branches:
     - main
 env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
 jobs:
   test:
     strategy:
@@ -21,14 +21,15 @@ jobs:
         - ON
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/github-script@v7
-      with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
     - uses: actions/checkout@v5
       with:
         submodules: true
+    - run: mkdir ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+    - uses: actions/cache@v4
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: vcpkg-${{ runner.os }}
     - uses: seanmiddleditch/gha-setup-ninja@v6
     - uses: pre-commit/action@v3.0.1
       if: ${{ matrix.os != 'macos-latest' }}
