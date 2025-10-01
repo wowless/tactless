@@ -30,7 +30,7 @@ jobs:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
         key: vcpkg-${{ runner.os }}-${{ github.run_id }}
         restore-keys: vcpkg-${{ runner.os }}
-    - uses: seanmiddleditch/gha-setup-ninja@v6
+    - uses: lukka/get-cmake@v4.1.1
     - uses: pre-commit/action@v3.0.1
       if: ${{ matrix.os != 'macos-latest' }}
       env:
