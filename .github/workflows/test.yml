@@ -31,6 +31,7 @@ jobs:
         submodules: true
     - uses: seanmiddleditch/gha-setup-ninja@v6
     - uses: pre-commit/action@v3.0.1
+      if: ${{ matrix.os != 'macos-latest' }}
       env:
         pythonLocation: ${{ matrix.os }}
     - run: cmake -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }}
