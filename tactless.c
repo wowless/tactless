@@ -107,13 +107,8 @@ static int parse_cdns(const char *s, struct cdns *cdns) {
   }
   memcpy(cdns->path, s, p - s);
   cdns->path[p - s] = '\0';
-  s = p + 1;
-  p = strchr(s, ' ');
-  if (!p || p - s >= sizeof(cdns->host)) {
-    return 0;
-  }
-  memcpy(cdns->host, s, p - s);
-  cdns->host[p - s] = '\0';
+  /* TODO support CDN host fallback, issue #47 */
+  strcpy(cdns->host, "level3.blizzard.com");
   return 1;
 }
 
