@@ -93,6 +93,17 @@ static int fdid(int argc, char **argv) {
   return ret;
 }
 
+static int hash(int argc, char **argv) {
+  if (argc != 1) {
+    fputs("usage: tactless hash filename", stderr);
+    return 0;
+  }
+  char hex[17];
+  tactless_prettynamehash(argv[0], hex);
+  puts(hex);
+  return 1;
+}
+
 static int name(int argc, char **argv) {
   if (argc != 2) {
     fputs("usage: tactless name $product $name\n", stderr);
@@ -154,7 +165,7 @@ struct command {
 };
 
 const struct command commands[] = {
-    {"build", build}, {"dump", dump},       {"fdid", fdid},
+    {"build", build}, {"dump", dump},       {"fdid", fdid}, {"hash", hash},
     {"name", name},   {"summary", summary}, {0, 0},
 };
 

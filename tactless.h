@@ -16,6 +16,7 @@ void tactless_dump(const tactless *t);
 
 int tactless_current_build(const char *product, char *hash, int *major,
                            int *minor, int *patch, int *build);
+void tactless_prettynamehash(const char *name, char *hash);
 
 struct tactless_root_fdids {
   int32_t fdid;

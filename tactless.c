@@ -1053,17 +1053,19 @@ static void hashlittle2(const void *key, size_t length, uint32_t *pc,
 #undef rot
 }
 
-static int name2fdid(const struct tactless_root *r, const char *name,
-                     int32_t *fdid) {
+void name2hash(const char *name, unsigned char *hash) {
   char buf[256], *c = buf;
   for (; *name && c != buf + sizeof(buf); ++c, ++name) {
     *c = (char)(*name == '/' ? '\\' : toupper(*name));
   }
   uint32_t pc = 0, pb = 0;
   hashlittle2(buf, c - buf, &pc, &pb);
-  unsigned char hash[8];
   memcpy(hash, &pb, 4);
   memcpy(hash + 4, &pc, 4);
+}
+
+static int hash2fdid(const struct tactless_root *r, const unsigned char *hash,
+                     int32_t *fdid) {
   const struct tactless_root_names *p =
       bsearch(hash, r->names, r->num_names, sizeof(*r->names), names_cmp);
   if (!p) {
@@ -1071,6 +1073,13 @@ static int name2fdid(const struct tactless_root *r, const char *name,
   }
   *fdid = p->fdid;
   return 1;
+}
+
+static int name2fdid(const struct tactless_root *r, const char *name,
+                     int32_t *fdid) {
+  unsigned char hash[8];
+  name2hash(name, hash);
+  return hash2fdid(r, hash, fdid);
 }
 
 struct root_tmp {
@@ -1331,6 +1340,15 @@ int tactless_root_parse(const byte *s, size_t size,
   } else {
     return parse_root_mfst(s, size, root);
   }
+}
+
+void tactless_prettynamehash(const char *name, char *hash) {
+  byte h[16];
+  memset(h, 0, 8);
+  name2hash(name, h + 8);
+  char hex[33];
+  hash2hex(h, hex);
+  memcpy(hash, hex + 16, 17);
 }
 
 void tactless_root_dump(const struct tactless_root *root) {
