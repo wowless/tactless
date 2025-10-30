@@ -1342,13 +1342,17 @@ int tactless_root_parse(const byte *s, size_t size,
   }
 }
 
-void tactless_prettynamehash(const char *name, char *hash) {
+void tactless_name_to_namehash(const char *name, byte *hash) {
+  name2hash(name, hash);
+}
+
+void tactless_namehash_to_hex(const byte *hash, char *hex) {
   byte h[16];
   memset(h, 0, 8);
-  name2hash(name, h + 8);
-  char hex[33];
-  hash2hex(h, hex);
-  memcpy(hash, hex + 16, 17);
+  memcpy(h + 8, hash, 8);
+  char buf[33];
+  hash2hex(h, buf);
+  memcpy(hex, buf + 16, 17);
 }
 
 void tactless_root_dump(const struct tactless_root *root) {
@@ -1359,13 +1363,10 @@ void tactless_root_dump(const struct tactless_root *root) {
     printf("%10d %s\n", root->fdids[i].fdid, hex);
   }
   printf("num names = %zu\n", root->num_names);
-  byte hash[16];
-  memset(hash, 0, 8);
   for (size_t i = 0; i < root->num_names; ++i) {
-    memcpy(hash + 8, root->names[i].name, 8);
-    char hex[33];
-    hash2hex(hash, hex);
-    printf("%s %10d\n", hex + 16, root->names[i].fdid);
+    char hex[17];
+    tactless_namehash_to_hex(root->names[i].name, hex);
+    printf("%s %10d\n", hex, root->names[i].fdid);
   }
 }
 

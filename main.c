@@ -98,8 +98,10 @@ static int hash(int argc, char **argv) {
     fputs("usage: tactless hash filename", stderr);
     return 0;
   }
+  unsigned char hash[8];
+  tactless_name_to_namehash(argv[0], hash);
   char hex[17];
-  tactless_prettynamehash(argv[0], hex);
+  tactless_namehash_to_hex(hash, hex);
   puts(hex);
   return 1;
 }
