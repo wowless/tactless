@@ -1569,6 +1569,10 @@ void tactless_close(struct tactless *t) {
   free(t);
 }
 
+const struct tactless_root *tactless_get_root(const tactless *t) {
+  return &t->root;
+}
+
 int tactless_current_build(const char *product, char *hash, int *major,
                            int *minor, int *patch, int *build) {
   CURL *curl = curl_easy_init();

@@ -36,6 +36,8 @@ struct tactless_root {
   struct tactless_root_names *names;
 };
 
+const struct tactless_root *tactless_get_root(const tactless *t);
+
 int tactless_root_parse(const unsigned char *s, size_t n,
                         struct tactless_root *r);
 void tactless_root_dump(const struct tactless_root *r);
