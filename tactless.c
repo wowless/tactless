@@ -3,6 +3,8 @@
 #include <ctype.h>
 #include <curl/curl.h>
 #include <openssl/md5.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -513,6 +515,227 @@ static int download_build_config(CURL *curl, const struct cdns *cdns,
   return ret;
 }
 
+#define MAX_TAGS 128
+#define MAX_FILES 1024
+#define MAX_FILE_NAME_LENGTH 255
+
+// Structure to hold an install tag entry
+typedef struct {
+  char name[64];
+  uint16_t type;
+  uint8_t *files;
+} InstallTagEntry;
+
+// Structure to hold an install file entry
+typedef struct {
+  char name[MAX_FILE_NAME_LENGTH];
+  uint8_t content_hash[16];
+  uint32_t size;
+  uint8_t *tags;
+} InstallFileEntry;
+
+// Structure to hold the parsed install file information
+typedef struct {
+  int hash_size;
+  int version;
+  int num_tags;
+  InstallTagEntry tags[MAX_TAGS];
+  int num_entries;
+  InstallFileEntry files[MAX_FILES];
+} InstallFile;
+
+void print_install_file(const InstallFile *install) {
+  printf("Install File Info:\n");
+  printf("Hash Size: %d\nTags: %d\nFiles: %d\n", install->hash_size,
+         install->num_tags, install->num_entries);
+  printf("Version: %d\n", install->version);
+
+  // Print tag entries
+  printf("\nParsed Tag Entries:\n");
+  for (int i = 0; i < install->num_tags; i++) {
+    printf("Tag %d: Name='%s', Type=%d\n", i, install->tags[i].name,
+           install->tags[i].type);
+  }
+
+  // Print file entries
+  printf("\nParsed File Entries:\n");
+  for (int i = 0; i < install->num_entries; i++) {
+    char hex[33];
+    hash2hex(install->files[i].content_hash, hex);
+    printf("\n%s (size: %u, md5: %s, tags: ", install->files[i].name,
+           install->files[i].size, hex);
+
+    int tag_count = 0;  // Counter for associated tags
+    for (int j = 0; j < install->num_tags; j++) {
+      if (install->files[i].tags[j] ==
+          1) {  // If the file is associated with this tag
+        if (tag_count > 0) {
+          printf(",");  // Separate tags with a comma
+        }
+        printf("%d=%s", install->tags[j].type, install->tags[j].name);
+        tag_count++;
+      }
+    }
+
+    if (tag_count == 0) {
+      printf("None");
+    }
+    printf(")");  // End of tag list
+  }
+  printf("\n");
+}
+
+int parse_install_file(const uint8_t *data, size_t data_size,
+                       InstallFile *install) {
+  size_t offset = 0;
+  // Validate the "IN" header
+  if (offset + 2 > data_size ||
+      strncmp((char *)(data + offset), "IN", 2) != 0) {
+    fprintf(stderr, "Invalid install file format.\n");
+    return -1;
+  }
+  // Skip "IN" header
+  offset += 2;
+
+  // header version byte
+  install->version = data[offset];
+  offset += 1;
+
+  // Read hash size and validate
+  install->hash_size = data[offset++];
+
+  if (install->hash_size != 16) {
+    fprintf(stderr, "Error: Unsupported install hash size! Got: %d\n",
+            install->hash_size);
+    return -1;
+  }
+
+  install->num_tags = uint16be(data + offset);
+  offset += 2;
+
+  install->num_entries = uint32be(data + offset);
+  offset += 4;
+
+  if (install->num_tags > MAX_TAGS || install->num_entries > MAX_FILES) {
+    fprintf(stderr,
+            "Error: Too many tags or files! Increase MAX_TAGS or MAX_FILES.\n");
+    return -1;
+  }
+
+  int bytes_per_tag = (install->num_entries + 7) / 8;
+
+  // Read Tags
+  for (int i = 0; i < install->num_tags; i++) {
+    InstallTagEntry *tag = &install->tags[i];
+
+    // **Read Tag Name (Null-Terminated String)**
+    size_t max_length = 64;
+    size_t name_len = strnlen((char *)(data + offset), max_length);
+
+    // Copy safely with explicit null termination
+    strncpy(tag->name, (char *)(data + offset), name_len);
+    tag->name[name_len] = '\0';
+    offset += name_len + 1;  // Move past string (including null terminator)
+
+    // **Read Type (UInt16, Handle Endianness)**
+    tag->type = uint16be(data + offset);
+    offset += 2;  // Move past the type
+
+    // **Allocate Memory for Bitmask**
+    tag->files = malloc(bytes_per_tag);
+    if (!tag->files) {
+      fprintf(stderr, "Memory allocation failed for tag files.\n");
+      return -1;
+    }
+    byte filebits[bytes_per_tag];
+    // **Read the File Bitmask**
+    memcpy(filebits, data + offset, bytes_per_tag);
+    offset += bytes_per_tag;
+
+    // **Apply Bitmask Transformation**
+    for (int j = 0; j < bytes_per_tag; j++) {
+      tag->files[j] =
+          ((filebits[j] * 0x0202020202ULL & 0x010884422010ULL) % 1023);
+    }
+    // Dump tag->files
+    /* printf("\nTag %s %u %d: ", tag->name, tag->type, i);
+    for (int j = 0; j < bytes_per_tag; j++) {
+      printf("%02x", tag->files[j]);
+    } */
+  }
+  // printf("\n");
+
+  // Read file entries
+  for (int i = 0; i < install->num_entries; i++) {
+    InstallFileEntry *file_entry = &install->files[i];
+
+    // Ensure the offset doesn't exceed the buffer
+    if (offset >= data_size) {
+      fprintf(stderr, "[ERROR] File %d offset exceeds data size!\n", i);
+      break;
+    }
+
+    // Find the null-terminated file name
+    size_t max_name_length = data_size - offset;
+    size_t name_len = strnlen((char *)(data + offset), max_name_length);
+
+    if (name_len == 0 || name_len >= max_name_length) {
+      fprintf(stderr, "[WARNING] File %d has an invalid name at offset %zu!\n",
+              i, offset);
+      file_entry->name[0] = '\0';  // Handle invalid name
+    } else {
+      // Copy the file name safely
+      memcpy(file_entry->name, data + offset, name_len);
+      file_entry->name[name_len] = '\0';  // Null-terminate properly
+    }
+
+    // Move past the filename including the null terminator
+    offset += name_len + 1;
+
+    // Ensure we have enough space to move forward
+    if (offset + 20 > data_size) {
+      fprintf(stderr,
+              "[ERROR] Not enough space to read metadata for File %d!\n", i);
+      break;
+    }
+
+    // Read content hash
+    memcpy(file_entry->content_hash, data + offset, install->hash_size);
+    offset += install->hash_size;
+
+    // Read file size
+    file_entry->size = uint32be(data + offset);
+    offset += 4;
+
+    // Allocate memory for storing tags per file
+    file_entry->tags = calloc(install->num_tags, sizeof(uint8_t));
+    if (!file_entry->tags) {
+      fprintf(stderr, "Memory allocation failed for file tags.\n");
+      return -1;
+    }
+
+    // Check tag bitmask and associate tags with the file
+    for (int t = 0; t < install->num_tags; t++) {
+      InstallTagEntry tagEntry = install->tags[t];
+      // Safety check: Ensure `files` exists
+      if (!tagEntry.files) {
+        fprintf(stderr, "[ERROR] install->tags[%d].files is NULL!\n", t);
+        return -1;
+      }
+
+      // Avoid out-of-bounds access
+
+      if ((i / 8) < bytes_per_tag &&
+          (install->tags[t].files[i / 8] & (1 << (i % 8)))) {
+        file_entry->tags[t] = 1;
+      } else {
+        file_entry->tags[t] = 0;
+      }
+    }
+  }
+  return 1;
+}
+
 struct cdn_config {
   byte (*archives)[16];
   int narchives;
@@ -828,8 +1051,15 @@ static int download_install(CURL *curl, const struct cdns *cdns,
                             const byte *ckey, const byte *ekey) {
   size_t size;
   byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
-  int ret = text != NULL;
+  InstallFile *install = malloc(sizeof(InstallFile));
+  if (!install) {
+    free(text);
+    return 0;
+  }
+  int ret = parse_install_file(text, size, install);
+  print_install_file(install);
   free(text);
+  free(install);
   return ret;
 }
 
