@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <zlib.h>
 
 typedef unsigned char byte;
@@ -261,17 +260,17 @@ static int writeall(const char *filename, const byte *text, size_t size) {
   }
   if (fwrite(text, size, 1, f) != 1) {
     fclose(f);
-    unlink(tmpname);
+    remove(tmpname);
     free(tmpname);
     return 0;
   }
   if (fclose(f) != 0) {
-    unlink(tmpname);
+    remove(tmpname);
     free(tmpname);
     return 0;
   }
   if (rename(tmpname, filename) != 0) {
-    unlink(tmpname);
+    remove(tmpname);
     free(tmpname);
     return 0;
   }
