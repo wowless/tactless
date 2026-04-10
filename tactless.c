@@ -251,8 +251,7 @@ static int writeall(const char *filename, const byte *text, size_t size) {
   if (!tmpname) {
     return 0;
   }
-  memcpy(tmpname, filename, fnlen);
-  memcpy(tmpname + fnlen, ".tmp", 5);
+  snprintf(tmpname, fnlen + 5, "%s.tmp", filename);
   FILE *f = fopen(tmpname, "w");
   if (!f) {
     free(tmpname);
