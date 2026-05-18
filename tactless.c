@@ -246,17 +246,34 @@ byte *tactless_readfile(const char *filename, size_t *size) {
 }
 
 static int writeall(const char *filename, const byte *text, size_t size) {
-  FILE *f = fopen(filename, "w");
+  size_t fnlen = strlen(filename);
+  char *tmpname = malloc(fnlen + 5);
+  if (!tmpname) {
+    return 0;
+  }
+  snprintf(tmpname, fnlen + 5, "%s.tmp", filename);
+  FILE *f = fopen(tmpname, "w");
   if (!f) {
+    free(tmpname);
     return 0;
   }
   if (fwrite(text, size, 1, f) != 1) {
     fclose(f);
+    remove(tmpname);
+    free(tmpname);
     return 0;
   }
   if (fclose(f) != 0) {
+    remove(tmpname);
+    free(tmpname);
     return 0;
   }
+  if (rename(tmpname, filename) != 0) {
+    remove(tmpname);
+    free(tmpname);
+    return 0;
+  }
+  free(tmpname);
   return 1;
 }
 
