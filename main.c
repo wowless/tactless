@@ -82,8 +82,15 @@ static int fdid(int argc, char **argv) {
     fputs("error opening tactless\n", stderr);
     return 0;
   }
+  char *endptr;
+  int32_t fdid_val = (int32_t)strtol(argv[1], &endptr, 10);
+  if (endptr == argv[1]) {
+    fputs("invalid fdid\n", stderr);
+    tactless_close(t);
+    return 0;
+  }
   size_t size;
-  unsigned char *data = tactless_get_fdid(t, atoi(argv[1]), &size);
+  unsigned char *data = tactless_get_fdid(t, fdid_val, &size);
   if (!data) {
     tactless_close(t);
     return 0;

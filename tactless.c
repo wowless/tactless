@@ -22,8 +22,9 @@ static size_t collect_header_callback(char *data, size_t size, size_t nitems,
   if (realsize >= 16 && !memcmp(data, "Content-Length: ", 16)) {
     memcpy(data, data + 16, realsize - 16);
     data[realsize - 16] = '\0';
-    long length = atol(data);
-    if (length == 0) {
+    char *endptr;
+    long length = strtol(data, &endptr, 10);
+    if (endptr == data || length <= 0) {
       return 0;
     }
     struct collect_buffer *buffer = cbarg;
@@ -133,12 +134,14 @@ static int parse_hash(const char *s, char delim, byte *hash) {
   if (end - s != 32) {
     return 0;
   }
-  unsigned int x;
   for (; s != end; s += 2, ++hash) {
-    if (sscanf(s, "%02x", &x) != 1) {
+    char hex[3] = {s[0], s[1], '\0'};
+    char *endptr;
+    byte val = (byte)strtoul(hex, &endptr, 16);
+    if (endptr != hex + 2) {
       return 0;
     }
-    *hash = x;
+    *hash = val;
   }
   return 1;
 }
@@ -171,8 +174,21 @@ static int parse_versions(const char *s, struct versions *versions) {
   if (!s) {
     return 0;
   }
-  int a, b, c, d;
-  if (sscanf(s, "|%d.%d.%d.%d|", &a, &b, &c, &d) != 4) {
+  char *endptr;
+  int a = (int)strtol(s + 1, &endptr, 10);
+  if (endptr == s + 1 || *endptr != '.') {
+    return 0;
+  }
+  int b = (int)strtol(endptr + 1, &endptr, 10);
+  if (*endptr != '.') {
+    return 0;
+  }
+  int c = (int)strtol(endptr + 1, &endptr, 10);
+  if (*endptr != '.') {
+    return 0;
+  }
+  int d = (int)strtol(endptr + 1, &endptr, 10);
+  if (*endptr != '|') {
     return 0;
   }
   versions->major = a;
