@@ -8,6 +8,10 @@
 #include <sys/stat.h>
 #include <zlib.h>
 
+#ifdef _WIN32
+#include <direct.h>
+#endif
+
 typedef unsigned char byte;
 
 struct collect_buffer {
@@ -371,6 +375,39 @@ static byte *parse_blte(const byte *s, size_t size, const byte *ekey,
   return out;
 }
 
+static int get_cache_dir(char *buf, size_t bufsize) {
+#ifdef _WIN32
+  const char *appdata = getenv("LOCALAPPDATA");
+  if (!appdata) {
+    return 0;
+  }
+  int n = snprintf(buf, bufsize, "%s/tactless", appdata);
+  if (n < 0 || (size_t)n >= bufsize) {
+    return 0;
+  }
+  _mkdir(buf);
+#else
+  const char *xdg = getenv("XDG_CACHE_HOME");
+  if (xdg && xdg[0]) {
+    int n = snprintf(buf, bufsize, "%s/tactless", xdg);
+    if (n < 0 || (size_t)n >= bufsize) {
+      return 0;
+    }
+  } else {
+    const char *home = getenv("HOME");
+    if (!home) {
+      return 0;
+    }
+    int n = snprintf(buf, bufsize, "%s/.cache/tactless", home);
+    if (n < 0 || (size_t)n >= bufsize) {
+      return 0;
+    }
+  }
+  mkdir(buf, 0755);
+#endif
+  return 1;
+}
+
 static void hash2hex(const byte *hash, char *hex) {
   for (const byte *end = hash + 16; hash != end; ++hash, hex += 2) {
     sprintf(hex, "%02x", *hash);
@@ -389,8 +426,14 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
                                const byte *ekey, size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
-  char filename[39];
-  sprintf(filename, "cache/%s", hex);
+  char cachedir[256];
+  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
+    return 0;
+  }
+  char filename[300];
+  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >= (int)sizeof(filename)) {
+    return 0;
+  }
   byte *text = tactless_readfile(filename, size);
   if (text && md5check(text, *size, ckey)) {
     return text;
@@ -435,8 +478,14 @@ static byte *download_from_cdn_archive(CURL *curl, const struct cdns *cdns,
                                        const byte *ekey, size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
-  char filename[39];
-  sprintf(filename, "cache/%s", hex);
+  char cachedir[256];
+  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
+    return 0;
+  }
+  char filename[300];
+  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >= (int)sizeof(filename)) {
+    return 0;
+  }
   byte *text = tactless_readfile(filename, size);
   if (text && md5check(text, *size, ckey)) {
     return text;
@@ -737,11 +786,17 @@ static int download_archives_index_multi(const struct cdns *cdns,
   curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   char url[256];
   char hex[33];
+  char cachedir[256];
+  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
+    return 0;
+  }
   int nf = 0;
   for (int i = 0; i < n; ++i) {
-    char filename[45];
+    char filename[306];
     hash2hex(cdn_config->archives[i], hex);
-    sprintf(filename, "cache/%s.index", hex);
+    if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >= (int)sizeof(filename)) {
+      return 0;
+    }
     size_t size;
     byte *text = tactless_readfile(filename, &size);
     c[i].cached = text && tactless_archive_index_parse(text, size, &c[i].index);
@@ -789,10 +844,13 @@ static int download_archives_index_multi(const struct cdns *cdns,
     int ret = tactless_archive_index_parse(c[i].buffer.data, c[i].buffer.size,
                                            &c[i].index);
     if (ret) {
-      char filename[45];
+      char filename[306];
       hash2hex(cdn_config->archives[i], hex);
-      sprintf(filename, "cache/%s.index", hex);
-      ret = writeall(filename, c[i].buffer.data, c[i].buffer.size);
+      if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >= (int)sizeof(filename)) {
+        ret = 0;
+      } else {
+        ret = writeall(filename, c[i].buffer.data, c[i].buffer.size);
+      }
     }
     overall = overall && ret;
   }
