@@ -431,7 +431,8 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
     return 0;
   }
   char filename[300];
-  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >= (int)sizeof(filename)) {
+  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >=
+      (int)sizeof(filename)) {
     return 0;
   }
   byte *text = tactless_readfile(filename, size);
@@ -483,7 +484,8 @@ static byte *download_from_cdn_archive(CURL *curl, const struct cdns *cdns,
     return 0;
   }
   char filename[300];
-  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >= (int)sizeof(filename)) {
+  if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >=
+      (int)sizeof(filename)) {
     return 0;
   }
   byte *text = tactless_readfile(filename, size);
@@ -794,7 +796,8 @@ static int download_archives_index_multi(const struct cdns *cdns,
   for (int i = 0; i < n; ++i) {
     char filename[306];
     hash2hex(cdn_config->archives[i], hex);
-    if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >= (int)sizeof(filename)) {
+    if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >=
+        (int)sizeof(filename)) {
       return 0;
     }
     size_t size;
@@ -846,7 +849,8 @@ static int download_archives_index_multi(const struct cdns *cdns,
     if (ret) {
       char filename[306];
       hash2hex(cdn_config->archives[i], hex);
-      if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >= (int)sizeof(filename)) {
+      if (snprintf(filename, sizeof(filename), "%s/%s.index", cachedir, hex) >=
+          (int)sizeof(filename)) {
         ret = 0;
       } else {
         ret = writeall(filename, c[i].buffer.data, c[i].buffer.size);
