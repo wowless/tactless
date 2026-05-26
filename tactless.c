@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <curl/curl.h>
+#include <errno.h>
 #include <openssl/md5.h>
 #include <stdlib.h>
 #include <string.h>
@@ -385,7 +386,9 @@ static int get_cache_dir(char *buf, size_t bufsize) {
   if (n < 0 || (size_t)n >= bufsize) {
     return 0;
   }
-  _mkdir(buf);
+  if (_mkdir(buf) != 0 && errno != EEXIST) {
+    return 0;
+  }
 #else
   const char *xdg = getenv("XDG_CACHE_HOME");
   if (xdg && xdg[0]) {
@@ -403,7 +406,9 @@ static int get_cache_dir(char *buf, size_t bufsize) {
       return 0;
     }
   }
-  mkdir(buf, 0755);
+  if (mkdir(buf, 0755) != 0 && errno != EEXIST) {
+    return 0;
+  }
 #endif
   return 1;
 }
@@ -422,14 +427,11 @@ static int mkurl(char *url, size_t size, const struct cdns *cdns,
 }
 
 static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
-                               const char *kind, const byte *ckey,
-                               const byte *ekey, size_t *size) {
+                               const char *cachedir, const char *kind,
+                               const byte *ckey, const byte *ekey,
+                               size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
-  char cachedir[256];
-  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
-    return 0;
-  }
   char filename[300];
   if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >=
       (int)sizeof(filename)) {
@@ -474,15 +476,12 @@ static byte *download_from_cdn(CURL *curl, const struct cdns *cdns,
 }
 
 static byte *download_from_cdn_archive(CURL *curl, const struct cdns *cdns,
+                                       const char *cachedir,
                                        const byte *archive, size_t esize,
                                        size_t offset, const byte *ckey,
                                        const byte *ekey, size_t *size) {
   char hex[33];
   hash2hex(ckey, hex);
-  char cachedir[256];
-  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
-    return 0;
-  }
   char filename[300];
   if (snprintf(filename, sizeof(filename), "%s/%s", cachedir, hex) >=
       (int)sizeof(filename)) {
@@ -568,10 +567,11 @@ static int parse_build_config(const char *s,
 }
 
 static int download_build_config(CURL *curl, const struct cdns *cdns,
-                                 const byte *hash,
+                                 const char *cachedir, const byte *hash,
                                  struct build_config *build_config) {
   size_t size;
-  byte *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  byte *text =
+      download_from_cdn(curl, cdns, cachedir, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -625,10 +625,11 @@ static int parse_cdn_config(const char *s, struct cdn_config *cdn_config) {
 }
 
 static int download_cdn_config(CURL *curl, const struct cdns *cdns,
-                               const byte *hash,
+                               const char *cachedir, const byte *hash,
                                struct cdn_config *cdn_config) {
   size_t size;
-  byte *text = download_from_cdn(curl, cdns, "config", hash, 0, &size);
+  byte *text =
+      download_from_cdn(curl, cdns, cachedir, "config", hash, 0, &size);
   if (!text) {
     return 0;
   }
@@ -779,6 +780,7 @@ static int archive_sort_cmp(const void *a, const void *b) {
 
 static int download_archives_index_multi(const struct cdns *cdns,
                                          const struct cdn_config *cdn_config,
+                                         const char *cachedir,
                                          struct multi_collect *c, CURLM *multi,
                                          struct archives_index *a) {
   int n = cdn_config->narchives;
@@ -788,10 +790,6 @@ static int download_archives_index_multi(const struct cdns *cdns,
   curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64);
   char url[256];
   char hex[33];
-  char cachedir[256];
-  if (!get_cache_dir(cachedir, sizeof(cachedir))) {
-    return 0;
-  }
   int nf = 0;
   for (int i = 0; i < n; ++i) {
     char filename[306];
@@ -884,11 +882,13 @@ static int download_archives_index_multi(const struct cdns *cdns,
 
 static int download_archives_index(const struct cdns *cdns,
                                    const struct cdn_config *cdn_config,
+                                   const char *cachedir,
                                    struct archives_index *a) {
   int n = cdn_config->narchives;
   struct multi_collect *c = calloc(n, sizeof(*c));
   CURLM *m = curl_multi_init();
-  int ret = c && m && download_archives_index_multi(cdns, cdn_config, c, m, a);
+  int ret = c && m &&
+            download_archives_index_multi(cdns, cdn_config, cachedir, c, m, a);
   if (c) {
     for (int i = 0; i < n; ++i) {
       curl_multi_remove_handle(m, c[i].curl);
@@ -903,9 +903,11 @@ static int download_archives_index(const struct cdns *cdns,
 }
 
 static int download_install(CURL *curl, const struct cdns *cdns,
-                            const byte *ckey, const byte *ekey) {
+                            const char *cachedir, const byte *ckey,
+                            const byte *ekey) {
   size_t size;
-  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text =
+      download_from_cdn(curl, cdns, cachedir, "data", ckey, ekey, &size);
   int ret = text != NULL;
   free(text);
   return ret;
@@ -1000,10 +1002,11 @@ void tactless_encoding_dump(const struct tactless_encoding *e) {
 void tactless_encoding_free(struct tactless_encoding *e) { free(e->data); }
 
 static int download_encoding(CURL *curl, const struct cdns *cdns,
-                             const byte *ckey, const byte *ekey,
-                             struct tactless_encoding *e) {
+                             const char *cachedir, const byte *ckey,
+                             const byte *ekey, struct tactless_encoding *e) {
   size_t size;
-  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text =
+      download_from_cdn(curl, cdns, cachedir, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
@@ -1453,10 +1456,12 @@ void tactless_root_free(struct tactless_root *root) {
   free(root->names);
 }
 
-static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
+static int download_root(CURL *curl, const struct cdns *cdns,
+                         const char *cachedir, const byte *ckey,
                          const byte *ekey, struct tactless_root *root) {
   size_t size;
-  byte *text = download_from_cdn(curl, cdns, "data", ckey, ekey, &size);
+  byte *text =
+      download_from_cdn(curl, cdns, cachedir, "data", ckey, ekey, &size);
   if (!text) {
     return 0;
   }
@@ -1467,6 +1472,7 @@ static int download_root(CURL *curl, const struct cdns *cdns, const byte *ckey,
 
 struct tactless {
   CURL *curl;
+  char cachedir[256];
   struct cdns cdns;
   struct versions versions;
   struct build_config build_config;
@@ -1478,6 +1484,9 @@ struct tactless {
 
 static int tactless_init(struct tactless *t, const char *product,
                          const char *build_config) {
+  if (!get_cache_dir(t->cachedir, sizeof(t->cachedir))) {
+    return 0;
+  }
   CURL *curl = curl_easy_init();
   if (!curl) {
     return 0;
@@ -1493,30 +1502,33 @@ static int tactless_init(struct tactless *t, const char *product,
       !parse_hash(build_config, '\0', t->versions.build_config)) {
     return 0;
   }
-  if (!download_build_config(curl, &t->cdns, t->versions.build_config,
-                             &t->build_config)) {
+  if (!download_build_config(curl, &t->cdns, t->cachedir,
+                             t->versions.build_config, &t->build_config)) {
     return 0;
   }
-  if (!download_cdn_config(curl, &t->cdns, t->versions.cdn_config,
+  if (!download_cdn_config(curl, &t->cdns, t->cachedir, t->versions.cdn_config,
                            &t->cdn_config)) {
     return 0;
   }
   const struct build_config *b = &t->build_config;
-  if (!download_install(curl, &t->cdns, b->install_ckey, b->install_ekey)) {
+  if (!download_install(curl, &t->cdns, t->cachedir, b->install_ckey,
+                        b->install_ekey)) {
     return 0;
   }
-  if (!download_encoding(curl, &t->cdns, b->encoding_ckey, b->encoding_ekey,
-                         &t->encoding)) {
+  if (!download_encoding(curl, &t->cdns, t->cachedir, b->encoding_ckey,
+                         b->encoding_ekey, &t->encoding)) {
     return 0;
   }
   const byte *root_ekey = ckey2ekey(&t->encoding, b->root_ckey);
   if (!root_ekey) {
     return 0;
   }
-  if (!download_root(curl, &t->cdns, b->root_ckey, root_ekey, &t->root)) {
+  if (!download_root(curl, &t->cdns, t->cachedir, b->root_ckey, root_ekey,
+                     &t->root)) {
     return 0;
   }
-  if (!download_archives_index(&t->cdns, &t->cdn_config, &t->archives_index)) {
+  if (!download_archives_index(&t->cdns, &t->cdn_config, t->cachedir,
+                               &t->archives_index)) {
     return 0;
   }
   return 1;
@@ -1551,8 +1563,8 @@ unsigned char *tactless_get_fdid(const tactless *t, int32_t fdid,
   const byte *archive = ae + 16;
   size_t asize = uint32be(ae + 32);
   size_t aoffset = uint32be(ae + 36);
-  return download_from_cdn_archive(t->curl, &t->cdns, archive, asize, aoffset,
-                                   ckey, ekey, size);
+  return download_from_cdn_archive(t->curl, &t->cdns, t->cachedir, archive,
+                                   asize, aoffset, ckey, ekey, size);
 }
 
 unsigned char *tactless_get_name(const tactless *t, const char *name,
@@ -1621,9 +1633,9 @@ void tactless_dump(const struct tactless *t) {
         printf("ManifestInterfaceTOCData.db2 archive size = %zu\n", size);
         printf("ManifestInterfaceTOCData.db2 archive offset = %zu\n", offset);
         size_t db2_size;
-        byte *data =
-            download_from_cdn_archive(t->curl, &t->cdns, archive, size, offset,
-                                      db2_ckey, db2_ekey, &db2_size);
+        byte *data = download_from_cdn_archive(t->curl, &t->cdns, t->cachedir,
+                                               archive, size, offset, db2_ckey,
+                                               db2_ekey, &db2_size);
         if (data) {
           printf("ManifestInterfaceTOCData.db2 content size = %zu\n", db2_size);
           free(data);
